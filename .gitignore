@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 .godot/
 tools/godot/
+Broken/dist/
 
 # Temporary Python installation files
 python-*.exe

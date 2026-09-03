@@ -153,9 +153,15 @@ func proceed(initial_logs: Array) -> Dictionary:
 	return _result(logs, [], 0.65, "generate_explore")
 
 func start_floor_boss(logs: Array) -> Dictionary:
-	if current_floor == 1: logs.append("\n【最终挑战：冥河摆渡人】"); return start_combat(["CharonTheFerryman"], true, logs)
-	if current_floor == 2: logs.append("\n【第二层Boss：守忆者】"); return start_combat(["MemoryKeeper"], true, logs)
-	if current_floor == 3: logs.append("\n【第三层Boss：残翼守门人】"); return start_combat(["CanYiShouMenRen"], true, logs)
+	if current_floor == 1:
+		logs.append("\n==================================================\n【最终挑战：冥河摆渡人】\n黑水翻涌，巨大的阴影笼罩了你。\n「生者！退去！此河只载亡魂，不渡活人！」")
+		return start_combat(["CharonTheFerryman"], true, logs)
+	if current_floor == 2:
+		logs.append("\n==================================================\n【第二层Boss：守忆者】\n一个由文字、姓名和地图组成的巨大人形挡住了去路。\n他没有敌意，只是在用成千上万种声音喃喃自语，试图记住一切。")
+		return start_combat(["MemoryKeeper"], true, logs)
+	if current_floor == 3:
+		logs.append("\n==================================================\n【第三层Boss：残翼守门人】\n天堂大门的最后守护者挡住了去路。翅膀折断，圣剑崩裂。\n它机械地举起剑，执行着早已没有意义的指令。")
+		return start_combat(["CanYiShouMenRen"], true, logs)
 	return start_combat(["ZhongMoBenShen"], true, logs)
 
 func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> Dictionary:
@@ -428,7 +434,7 @@ func boss_victory(logs: Array) -> Dictionary:
 		logs.append("🎉 胜利！你击败守忆者，守住了自我！请选择强化：")
 		return _result(logs, [_action("⚔️ 灵魂锋芒 (攻击判定+1)", "level_up", {"kind":"attack"}), _action("❤️ 生命汲取 (最大生命+5)", "level_up", {"kind":"hp"}), _action("🛡️ 坚固壁垒 (护盾获得量+1)", "level_up", {"kind":"shield"})])
 	if current_floor == 3:
-		current_floor = 4; logs.append("\n残翼守门人倒下。你走进最深处的纯粹空白。\n【终末】")
+		current_floor = 4; logs.append("\n残翼守门人倒下，天堂的大门轰然碎裂。\n你走进了最深处。这里没有光，没有暗，只有一片纯粹的空白。\n\n=============== 终末 ===============\n一个没有形态的存在在此显现。神老死之后，世界开始遗忘自己。\n你不是在和一个敌人战斗，你是在和“结束”这个概念本身对峙。")
 		return start_combat(["ZhongMoBenShen"], true, logs)
 	phase = "GAME_OVER"; logs.append("🎉 胜利！你击败了终末本身！世界在你身后缓缓重组。")
 	return _result(logs, [_action("🔄 重新开始", "restart")])
@@ -439,8 +445,10 @@ func level_up(kind: String) -> Dictionary:
 	elif kind == "hp": player.max_hp += 5; player.current_hp += 5; logs.append("❤️ 最大生命永久 +5。")
 	else: player.bonus_shield += 1; logs.append("🛡️ 护盾获得量永久 +1。")
 	current_floor += 1; distance_to_boss = rng.randi_range(6,9); enemies = []; combat_round = 1
-	if current_floor == 2: player.memory = 10; logs.append("\n=============== 第二层：蚀之人间 ===============\n你必须收集记忆残片来保持自我。")
-	else: player.memory = mini(player.max_memory, player.memory + 8); logs.append("\n=============== 第三层：陨落天堂 ===============\n所有判定将受到法则干扰。")
+	if current_floor == 2:
+		player.memory = 10; logs.append("\n你踏上了冥河之船，前往更深层的地狱...\n\n=============== 第二层：蚀之人间 ===============\n这里的颜色像被水浸泡过一样剥落，时间法则在此断裂。\n你必须收集“记忆残片”来保持自我，否则将融入背景！")
+	else:
+		player.memory = mini(player.max_memory, player.memory + 8); logs.append("\n守忆者的身躯崩塌，化作漫天飞舞的纸屑。\n你顺着纸屑飞舞的方向，来到了曾经的天堂。\n\n=============== 第三层：陨落天堂 ===============\n神圣的殿堂已经崩坏，天使的羽毛散落一地。\n这里的法则正在崩溃，你的所有判定都将受到干扰。")
 	return generate_explore(logs)
 
 func game_over(logs: Array) -> Dictionary:

@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+
+# Temporary Python installation files
+python-*.exe
+python-install.log

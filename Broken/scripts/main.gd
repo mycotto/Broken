@@ -252,12 +252,7 @@ func _refresh_status() -> void:
 	status_box.add_child(_status_chip("icon-ac-v2.png", "%d" % game.player.ac))
 	if game.current_floor >= 2: status_box.add_child(_status_chip("icon-memory-v2.png", "%d / %d" % [game.player.memory, game.player.max_memory]))
 	if game.is_mage(): status_box.add_child(_status_chip("icon-mage-spell-charge.png", "%d / 5" % game.player.charge))
-	var item_count := Label.new()
-	item_count.text = "🧪 %d/%d" % [game.player.items.size(), BrokenGameState.MAX_POTION_SLOTS]
-	item_count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	item_count.add_theme_font_size_override("font_size", 20)
-	item_count.add_theme_color_override("font_color", Color("c6d8a1"))
-	status_box.add_child(item_count)
+	status_box.add_child(_status_chip("potion-bottle.png", "%d/%d" % [game.player.items.size(), BrokenGameState.MAX_POTION_SLOTS]))
 	var distance := Label.new()
 	distance.text = "距离 %d 步" % game.distance_to_boss
 	distance.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -272,7 +267,8 @@ func _action_icon(action: Dictionary) -> Texture2D:
 		"attack":"icon-warrior-power-attack.png", "shield_bash":"icon-warrior-shield-bash.png", "defend":"icon-warrior-guard-stance.png",
 		"arcane_bolt":"icon-arcane-missile.png", "arcane_torrent":"icon-arcane-torrent.png", "spell_slot":"icon-spell-slots.png",
 		"tough":"icon-warrior-endure.png", "dodge":"icon-warrior-dodge.png", "parry":"icon-warrior-parry.png",
-		"arcane_barrier":"icon-mage-spell-charge.png", "energy_counter":"icon-spell-slots.png"
+		"arcane_barrier":"icon-mage-spell-charge.png", "energy_counter":"icon-spell-slots.png",
+		"items":"potion-bottle.png", "use_item":"potion-bottle.png", "drop_inventory_item":"potion-bottle.png"
 	}
 	if icons.has(id): return _texture(icons[id])
 	return null
@@ -290,7 +286,7 @@ func _add_action_button(action: Dictionary) -> void:
 	if icon:
 		button.icon = icon
 		button.expand_icon = false
-		button.add_theme_constant_override("icon_max_width", 64)
+		button.add_theme_constant_override("icon_max_width", 86 if is_item_action else 64)
 	_apply_button_style(button)
 	button.pressed.connect(_pressed.bind(action))
 	actions_box.add_child(button)

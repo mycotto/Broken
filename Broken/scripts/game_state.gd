@@ -25,6 +25,7 @@ var combat_enemy_attack_penalty_sources: Array = []
 var mage_spells: Array = []
 var pending_spell := {}
 var pending_item := {}
+var inventory_opened_from_combat := false
 
 func _init() -> void:
 	rng.randomize()
@@ -121,7 +122,8 @@ func execute_action(id: String, args := {}) -> Dictionary:
 		"items": return show_item_selection()
 		"use_item": return use_item(args.index)
 		"use_item_target": return use_item_target(args.index)
-		"cancel_items": return player_actions()
+		"drop_inventory_item": return drop_inventory_item(args.index)
+		"cancel_items": return close_item_selection()
 		"pickup_item": return resolve_potion_pickup(true)
 		"discard_item": return resolve_potion_pickup(false)
 		"enemy_turn": return enemy_turn()
@@ -156,6 +158,7 @@ func generate_explore(initial_logs: Array = []) -> Dictionary:
 		actions.append_array(options.slice(0, 2))
 	else:
 		actions = options.slice(0, 3)
+	actions.append(_action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items", {}, "item"))
 	actions.append(_action("角色面板", "character"))
 	return _result(logs, actions)
 
@@ -308,24 +311,40 @@ func player_actions(initial_logs: Array = []) -> Dictionary:
 			if not player.used_spell_ids.has(spell.id): remaining_slots += 1
 		var spell_label := "法术位（剩余 %d/3；需要 3 层充能：%d/3）" % [remaining_slots, player.charge]
 		if remaining_slots == 0: spell_label = "法术位（本场三个高阶法术均已释放）"
-		actions = [_action("奥术飞弹 (1d8+4；获得 1 层充能)", "select_target", {"next":"arcane_bolt"}, "combat", player.disabled_action == "arcane_bolt"), _action("奥术洪流（获得 3 层充能）", "arcane_torrent", {}, "combat", player.disabled_action == "arcane_torrent"), _action(spell_label, "spell_slot", {}, "combat", player.disabled_action == "spell_slot" or remaining_slots == 0 or player.charge < 3), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
+		actions = [_action("奥术飞弹 (1d8+4；获得 1 层充能)", "select_target", {"next":"arcane_bolt"}, "combat", player.disabled_action == "arcane_bolt"), _action("奥术洪流（获得 3 层充能）", "arcane_torrent", {}, "combat", player.disabled_action == "arcane_torrent"), _action(spell_label, "spell_slot", {}, "combat", player.disabled_action == "spell_slot" or remaining_slots == 0 or player.charge < 3), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
 	else:
-		actions = [_action("强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
+		actions = [_action("强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
 	return _result(logs, actions)
 
-func show_item_selection() -> Dictionary:
-	if phase != "COMBAT_PLAYER": return player_actions(["药水只能在你的战斗回合使用。"])
-	if player.items.is_empty(): return player_actions(["道具栏为空。"])
+func show_item_selection(initial_logs: Array = []) -> Dictionary:
+	if phase == "COMBAT_PLAYER": inventory_opened_from_combat = true
+	elif phase == "EXPLORE": inventory_opened_from_combat = false
+	elif phase != "ITEM_SELECT" and phase != "ITEM_TARGET": return _result(["当前无法打开道具栏。"])
 	phase = "ITEM_SELECT"
-	var actions := []
+	var actions := []; var logs := initial_logs.duplicate()
+	if player.items.is_empty():
+		logs.append("\n【道具栏】当前为空。")
+		actions.append(_action("返回", "cancel_items"))
+		return _result(logs, actions)
+	logs.append("\n【道具栏】药水只能在你的战斗回合使用；可随时丢弃。")
 	for index in range(player.items.size()):
 		var item: Dictionary = player.items[index]
-		actions.append(_action("🧪【%s】\n%s" % [item.name, item.description], "use_item", {"index":index}, "item"))
-	actions.append(_action("返回战斗行动", "cancel_items"))
-	return _result(["\n【道具栏】使用药水不消耗本回合行动。"], actions)
+		if inventory_opened_from_combat: actions.append(_action("🧪 使用【%s】\n%s" % [item.name, item.description], "use_item", {"index":index}, "item"))
+		actions.append(_action("🗑️ 丢弃【%s】" % item.name, "drop_inventory_item", {"index":index}, "item"))
+	actions.append(_action("返回战斗行动" if inventory_opened_from_combat else "返回探索", "cancel_items"))
+	return _result(logs, actions)
+
+func close_item_selection() -> Dictionary:
+	return player_actions() if inventory_opened_from_combat else generate_explore()
+
+func drop_inventory_item(index: int) -> Dictionary:
+	if phase != "ITEM_SELECT" or index < 0 or index >= player.items.size(): return show_item_selection(["该药水不可丢弃。"])
+	var item: Dictionary = player.items[index]
+	player.items.remove_at(index)
+	return show_item_selection(["🗑️ 已丢弃【%s】。" % item.name])
 
 func use_item(index: int) -> Dictionary:
-	if phase != "ITEM_SELECT" or index < 0 or index >= player.items.size(): return player_actions(["该药水不可用。"])
+	if phase != "ITEM_SELECT" or not inventory_opened_from_combat or index < 0 or index >= player.items.size(): return close_item_selection()
 	var item: Dictionary = player.items[index]
 	if item.get("targeted", false):
 		pending_item = {"index":index, "item":item}; phase = "ITEM_TARGET"

@@ -20,7 +20,7 @@ func _init() -> void:
 	assert(select.actions.size() == 2)
 	assert(game.phase == "CHARACTER_SELECT")
 	var start := game.start_new_game("warrior")
-	assert(start.actions.size() == 4)
+	assert(start.actions.size() == 5)
 	assert(game.player.class_id == "warrior")
 	assert(game.current_floor == 1)
 	var combat := game.start_combat(["LostSoul"], false)
@@ -146,7 +146,7 @@ func _init() -> void:
 	potion_game.player.current_hp = 10
 	for potion_id in ["healing", "might", "precision", "weakening", "barrier", "fire"]:
 		potion_game.player.items.append(BrokenGameData.make_potion(potion_id))
-	assert(potion_game.show_item_selection().actions.size() == 7)
+	assert(potion_game.show_item_selection().actions.size() == 13)
 	potion_game.use_item(0)
 	assert(potion_game.player.current_hp == 15)
 	potion_game.show_item_selection(); potion_game.use_item(0)
@@ -169,6 +169,14 @@ func _init() -> void:
 	assert(pickup.actions.size() == 2)
 	pickup_game.execute_action("pickup_item")
 	assert(pickup_game.player.items.size() == 1)
+	var inventory_game := BrokenGameState.new()
+	var inventory_map := inventory_game.start_new_game("warrior")
+	assert(inventory_map.actions.any(func(action): return action.id == "items"))
+	inventory_game.player.items.append(BrokenGameData.make_potion("healing"))
+	var inventory := inventory_game.show_item_selection()
+	assert(inventory.actions.size() == 2)
+	inventory_game.drop_inventory_item(0)
+	assert(inventory_game.player.items.is_empty())
 	var full_inventory_game := BrokenGameState.new()
 	full_inventory_game.start_new_game("warrior")
 	for potion_id in ["healing", "might", "precision"]:

@@ -13,7 +13,7 @@ config_version=5
 config/name="Broken"
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.7")
-config/icon="res://assets/ui/icon-shield-v2.png"
+config/icon="res://assets/ui/broken-title-logo.png"
 
 [display]
 

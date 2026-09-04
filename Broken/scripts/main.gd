@@ -157,7 +157,7 @@ func _build_ui() -> void:
 	selection_cards = HBoxContainer.new()
 	selection_cards.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	selection_cards.alignment = BoxContainer.ALIGNMENT_CENTER
-	selection_cards.add_theme_constant_override("separation", 28)
+	selection_cards.add_theme_constant_override("separation", 16)
 	selection_content.add_child(selection_cards)
 
 	main_menu_panel = PanelContainer.new()
@@ -316,7 +316,8 @@ func _build_character_cards(actions: Array) -> void:
 	for action in actions:
 		var class_id: String = action.args.get("character_id", "")
 		var card := PanelContainer.new()
-		card.custom_minimum_size = Vector2(320 if actions.size() > 3 else 360, 0)
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.size_flags_stretch_ratio = 1.0
 		card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		card.add_theme_stylebox_override("panel", _panel_style())
 		selection_cards.add_child(card)
@@ -330,7 +331,7 @@ func _build_character_cards(actions: Array) -> void:
 		elif class_id == "shadowdancer": portrait.texture_normal = _texture("shadowdancer-portrait.png")
 		portrait.ignore_texture_size = true
 		portrait.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-		portrait.custom_minimum_size = Vector2(0, 320)
+		portrait.custom_minimum_size = Vector2(0, 240)
 		portrait.tooltip_text = "点击选择%s" % ("战士" if class_id == "warrior" else "法师" if class_id == "mage" else "魔剑士" if class_id == "spellsword" else "影舞者")
 		portrait.pressed.connect(_pressed.bind(action))
 		content.add_child(portrait)
@@ -338,7 +339,7 @@ func _build_character_cards(actions: Array) -> void:
 		label.text = action.label
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 17)
+		label.add_theme_font_size_override("font_size", 15)
 		content.add_child(label)
 
 func _build_main_menu(actions: Array) -> void:

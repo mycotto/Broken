@@ -18,6 +18,11 @@ func _run() -> void:
 	assert(portraits.size() == 4)
 	assert(portraits[2].texture_normal != null)
 	assert(portraits[3].texture_normal != null)
+	var card_viewport_width: float = screen.get_viewport_rect().size.x
+	var cards: HBoxContainer = screen.get("selection_cards")
+	for card in cards.get_children():
+		assert(card.get_global_rect().position.x >= 0)
+		assert(card.get_global_rect().end.x <= card_viewport_width)
 	portraits[0].emit_signal("pressed")
 	await process_frame
 	assert(game_state.player.class_id == "warrior")

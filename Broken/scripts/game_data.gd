@@ -89,7 +89,9 @@ static func make_monster(id: String) -> Dictionary:
 	monster["max_hp"] = monster["hp"]
 	monster["current_hp"] = monster["hp"]
 	monster["next_attack_penalty"] = 0
+	monster["next_attack_penalty_sources"] = []
 	monster["combat_attack_penalty"] = 0
+	monster["combat_attack_penalty_sources"] = []
 	return monster
 
 static func make_relic(id: String) -> Dictionary:

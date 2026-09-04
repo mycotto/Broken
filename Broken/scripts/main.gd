@@ -283,8 +283,9 @@ func _add_action_button(action: Dictionary) -> void:
 	button.disabled = action.get("disabled", false)
 	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	button.custom_minimum_size = Vector2(0, 78 if action.get("style", "") == "combat" else 66)
-	button.add_theme_font_size_override("font_size", 19)
+	var is_item_action: bool = action.get("style", "") == "item"
+	button.custom_minimum_size = Vector2(0, 118 if is_item_action else 78 if action.get("style", "") == "combat" else 66)
+	button.add_theme_font_size_override("font_size", 22 if is_item_action else 19)
 	var icon := _action_icon(action)
 	if icon:
 		button.icon = icon
@@ -339,6 +340,7 @@ func _set_action_title() -> void:
 	elif game.phase == "SPELL_TARGET": action_title.text = "选择施法目标"
 	elif game.phase == "ITEM_SELECT": action_title.text = "道具栏"
 	elif game.phase == "ITEM_TARGET": action_title.text = "选择药水目标"
+	elif game.phase == "POTION_PICKUP": action_title.text = "发现药水"
 	elif game.phase == "TARGETING": action_title.text = "选择攻击目标"
 	elif game.phase == "COMBAT_DEFEND": action_title.text = "选择防御方式"
 	else: action_title.text = "行动"

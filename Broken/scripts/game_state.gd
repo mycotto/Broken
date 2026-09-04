@@ -17,6 +17,7 @@ var combat_ac_bonus := 0
 var combat_damage_bonus := 0
 var combat_attack_roll_bonus := 0
 var combat_enemy_attack_penalty := 0
+var combat_enemy_attack_penalty_sources: Array = []
 var mage_spells: Array = []
 var pending_spell := {}
 var pending_item := {}
@@ -117,6 +118,8 @@ func execute_action(id: String, args := {}) -> Dictionary:
 		"use_item": return use_item(args.index)
 		"use_item_target": return use_item_target(args.index)
 		"cancel_items": return player_actions()
+		"pickup_item": return resolve_potion_pickup(true)
+		"discard_item": return resolve_potion_pickup(false)
 		"enemy_turn": return enemy_turn()
 		"tough": return resolve_tough()
 		"dodge": return resolve_dodge()
@@ -187,8 +190,20 @@ func mystery() -> Dictionary:
 func treasure() -> Dictionary:
 	var potion_ids: Array = BrokenGameData.POTIONS.keys()
 	var potion := BrokenGameData.make_potion(potion_ids.pick_random())
-	player.items.append(potion)
-	return gain_relic("treasure", ["🧪 宝箱里发现【%s】！效果：%s" % [potion.name, potion.description]])
+	pending_item = {"item":potion}
+	phase = "POTION_PICKUP"
+	return _result(["🧪 宝箱里发现【%s】！\n效果：%s" % [potion.name, potion.description], "要把它放进道具栏吗？"], [_action("拾取【%s】" % potion.name, "pickup_item", {}, "item"), _action("丢弃药水", "discard_item", {}, "item")])
+
+func resolve_potion_pickup(pick_up: bool) -> Dictionary:
+	if phase != "POTION_PICKUP" or pending_item.is_empty(): return generate_explore(["没有等待处理的药水。"])
+	var potion: Dictionary = pending_item.item; pending_item = {}
+	var logs := []
+	if pick_up:
+		player.items.append(potion)
+		logs.append("🧪 你拾取【%s】，已放入道具栏（当前 %d 瓶）。" % [potion.name, player.items.size()])
+	else:
+		logs.append("🗑️ 你丢弃了【%s】。" % potion.name)
+	return gain_relic("treasure", logs)
 func studio() -> Dictionary:
 	if rng.randi_range(0, 1) == 0: return gain_relic("normal", ["你走进褪色画室，画布后藏着一件遗物。"])
 	player.memory = mini(player.max_memory, player.memory + 3)
@@ -243,7 +258,7 @@ func start_floor_boss(logs: Array) -> Dictionary:
 func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> Dictionary:
 	phase = "COMBAT_PLAYER"; enemies = []
 	for id in ids: enemies.append(BrokenGameData.make_monster(id))
-	shield_bash_cooldown = 0; defend_cooldown = 0; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
+	shield_bash_cooldown = 0; defend_cooldown = 0; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; combat_enemy_attack_penalty_sources = []; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
 	if is_mage():
 		player.charge = 0; player.used_spell_ids = []
 		var spell_ids: Array = BrokenGameData.MAGE_SPELLS.keys(); spell_ids.shuffle()
@@ -319,7 +334,7 @@ func apply_item(item: Dictionary, item_index: int, target: Dictionary) -> Dictio
 		"roll_bonus":
 			combat_attack_roll_bonus += item.amount; logs.append("🎯 本场攻击判定 +%d（当前 +%d）。" % [item.amount, combat_attack_roll_bonus])
 		"enemy_roll_penalty":
-			combat_enemy_attack_penalty += item.amount; logs.append("🌫️ 敌人本场攻击判定 -%d（当前 -%d）。" % [item.amount, combat_enemy_attack_penalty])
+			combat_enemy_attack_penalty += item.amount; combat_enemy_attack_penalty_sources.append("灰雾削弱药剂 -%d" % item.amount); logs.append("🌫️ 敌人本场攻击判定 -%d（当前 -%d）。" % [item.amount, combat_enemy_attack_penalty])
 		"shield":
 			var shield: int = item.amount + player.bonus_shield; player.temp_hp += shield; logs.append("🛡️ 获得 %d 点护盾。" % shield)
 		"damage":
@@ -393,7 +408,7 @@ func resolve_spell(spell: Dictionary, target: Dictionary) -> Dictionary:
 		"curse":
 			player.temp_hp += spell.amount + player.bonus_shield; logs.append("🛡️ 获得 %d 点护盾。" % (spell.amount + player.bonus_shield))
 			for enemy in alive_enemies():
-				enemy.combat_attack_penalty += 3; enemy.ac -= 2; logs.append("【%s】陷入失序：本场攻击判定 -3，AC -2（当前 AC %d）。" % [enemy.name, enemy.ac])
+				enemy.combat_attack_penalty += 3; enemy.combat_attack_penalty_sources.append("失序诅咒 -3"); enemy.ac -= 2; logs.append("【%s】陷入失序：本场攻击判定 -3，AC -2（当前 AC %d）。" % [enemy.name, enemy.ac])
 	if alive_enemies().is_empty(): return victory(logs)
 	return schedule_enemy(logs)
 
@@ -453,8 +468,22 @@ func enemy_turn() -> Dictionary:
 		player.memory -= attack.memory_damage; logs.append("🧠 %s 发动【遗忘低语】！无法防御，记忆 -%d。" % [enemy.name, attack.memory_damage])
 		if player.memory <= 0: return memory_over(logs)
 		return _result(logs, [], 0.35, "enemy_turn")
-	var penalty: int = enemy.next_attack_penalty + enemy.combat_attack_penalty + combat_enemy_attack_penalty; var enemy_roll: int = roll_d20() + attack.bonus - penalty; enemy.next_attack_penalty = 0
-	var damage := roll_dice(attack.damage); logs.append("⚔️ %s 发动【%s】！掷出 %d，造成 %d 点伤害。" % [enemy.name, attack.name, enemy_roll, damage])
+	var next_penalty: int = enemy.next_attack_penalty
+	var combat_penalty: int = enemy.combat_attack_penalty
+	var penalty: int = next_penalty + combat_penalty + combat_enemy_attack_penalty
+	var base_roll: int = roll_d20() + attack.bonus
+	var enemy_roll: int = base_roll - penalty
+	var penalty_sources: Array = []
+	penalty_sources.append_array(enemy.next_attack_penalty_sources)
+	penalty_sources.append_array(enemy.combat_attack_penalty_sources)
+	penalty_sources.append_array(combat_enemy_attack_penalty_sources)
+	enemy.next_attack_penalty = 0; enemy.next_attack_penalty_sources = []
+	var damage := roll_dice(attack.damage)
+	if penalty > 0:
+		var source_text := "、".join(penalty_sources) if not penalty_sources.is_empty() else "攻击判定削弱 -%d" % penalty
+		logs.append("⚔️ %s 发动【%s】！掷出 %d（%d - %d），造成 %d 点伤害。\n   削弱来源：%s" % [enemy.name, attack.name, enemy_roll, base_roll, penalty, damage, source_text])
+	else:
+		logs.append("⚔️ %s 发动【%s】！掷出 %d，造成 %d 点伤害。" % [enemy.name, attack.name, enemy_roll, damage])
 	var defended := relic_event("defend", {"roll":enemy_roll, "damage":damage})
 	logs.append_array(defended.logs)
 	if defended.value.handled:
@@ -558,9 +587,9 @@ func relic_event(event: String, context: Dictionary, default_value = null) -> Di
 			"attack_hit":
 				var target: Dictionary = context.target
 				if id == "soul_fire": value += 1; logs.append("🔥【迷途魂火】伤害+1。")
-				if id == "oar" and rng.randf() < .25: target.next_attack_penalty += 2; logs.append("🚣【卡戎船桨碎片】击退敌人。")
-				if id == "dog_tooth": target.next_attack_penalty += 2; logs.append("🦷【泥沼犬齿】减速敌人。")
-				if id == "fear_face" and rng.randf() < .2: target.next_attack_penalty += 3; logs.append("👻【恐怖之面】恐惧敌人。")
+				if id == "oar" and rng.randf() < .25: target.next_attack_penalty += 2; target.next_attack_penalty_sources.append("卡戎船桨碎片 -2"); logs.append("🚣【卡戎船桨碎片】击退敌人。")
+				if id == "dog_tooth": target.next_attack_penalty += 2; target.next_attack_penalty_sources.append("泥沼犬齿 -2"); logs.append("🦷【泥沼犬齿】减速敌人。")
+				if id == "fear_face" and rng.randf() < .2: target.next_attack_penalty += 3; target.next_attack_penalty_sources.append("恐怖之面 -3"); logs.append("👻【恐怖之面】恐惧敌人。")
 				if id == "yesterday_coin" and value % 2 != 0: value += 1; logs.append("🪙【昨日硬币】伤害为奇数，+1。")
 				if id == "eroded_shard":
 					var bonus := rng.randi_range(2,3); value += bonus; logs.append("✨【蚀光残片】伤害+%d。" % bonus)

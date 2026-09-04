@@ -253,7 +253,7 @@ func _refresh_status() -> void:
 	if game.current_floor >= 2: status_box.add_child(_status_chip("icon-memory-v2.png", "%d / %d" % [game.player.memory, game.player.max_memory]))
 	if game.is_mage(): status_box.add_child(_status_chip("icon-mage-spell-charge.png", "%d / 5" % game.player.charge))
 	var item_count := Label.new()
-	item_count.text = "🧪 %d" % game.player.items.size()
+	item_count.text = "🧪 %d/%d" % [game.player.items.size(), BrokenGameState.MAX_POTION_SLOTS]
 	item_count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	item_count.add_theme_font_size_override("font_size", 20)
 	item_count.add_theme_color_override("font_color", Color("c6d8a1"))

@@ -1,6 +1,10 @@
 class_name BrokenGameState
 extends RefCounted
 
+const MAX_POTION_SLOTS := 3
+const TREASURE_POTION_DROP_CHANCE := 0.5
+const ELITE_POTION_DROP_CHANCE := 0.5
+
 var rng := RandomNumberGenerator.new()
 var player: Dictionary
 var enemies: Array = []
@@ -188,22 +192,37 @@ func mystery() -> Dictionary:
 		else: player.strength += 1; player.dexterity += 1; logs.append("🛡️ 古老石碑令力量和敏捷永久 +1！")
 	return proceed(logs)
 func treasure() -> Dictionary:
+	return try_potion_drop("treasure", [], TREASURE_POTION_DROP_CHANCE)
+
+func try_potion_drop(relic_kind: String, initial_logs: Array, chance: float) -> Dictionary:
+	if rng.randf() >= chance:
+		var no_drop_logs := initial_logs.duplicate()
+		no_drop_logs.append("宝箱里没有发现可用药水。" if relic_kind == "treasure" else "精英的遗物中没有可用药水。")
+		return gain_relic(relic_kind, no_drop_logs)
 	var potion_ids: Array = BrokenGameData.POTIONS.keys()
-	var potion := BrokenGameData.make_potion(potion_ids.pick_random())
-	pending_item = {"item":potion}
+	return offer_potion_pickup(BrokenGameData.make_potion(potion_ids.pick_random()), relic_kind, initial_logs)
+
+func offer_potion_pickup(potion: Dictionary, relic_kind: String, initial_logs: Array) -> Dictionary:
+	pending_item = {"item":potion, "relic_kind":relic_kind, "logs":initial_logs.duplicate()}
 	phase = "POTION_PICKUP"
-	return _result(["🧪 宝箱里发现【%s】！\n效果：%s" % [potion.name, potion.description], "要把它放进道具栏吗？"], [_action("拾取【%s】" % potion.name, "pickup_item", {}, "item"), _action("丢弃药水", "discard_item", {}, "item")])
+	var full: bool = player.items.size() >= MAX_POTION_SLOTS
+	var logs := initial_logs.duplicate()
+	logs.append("🧪 发现【%s】！\n效果：%s" % [potion.name, potion.description])
+	logs.append("道具栏已满（%d/%d），无法再拾取。" % [player.items.size(), MAX_POTION_SLOTS] if full else "要把它放进道具栏吗？（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS])
+	return _result(logs, [_action("拾取【%s】" % potion.name, "pickup_item", {}, "item", full), _action("丢弃药水", "discard_item", {}, "item")])
 
 func resolve_potion_pickup(pick_up: bool) -> Dictionary:
 	if phase != "POTION_PICKUP" or pending_item.is_empty(): return generate_explore(["没有等待处理的药水。"])
-	var potion: Dictionary = pending_item.item; pending_item = {}
-	var logs := []
-	if pick_up:
+	var potion: Dictionary = pending_item.item
+	var relic_kind: String = pending_item.relic_kind
+	var logs: Array = pending_item.logs.duplicate()
+	pending_item = {}
+	if pick_up and player.items.size() < MAX_POTION_SLOTS:
 		player.items.append(potion)
-		logs.append("🧪 你拾取【%s】，已放入道具栏（当前 %d 瓶）。" % [potion.name, player.items.size()])
+		logs.append("🧪 你拾取【%s】，已放入道具栏（当前 %d/%d 瓶）。" % [potion.name, player.items.size(), MAX_POTION_SLOTS])
 	else:
-		logs.append("🗑️ 你丢弃了【%s】。" % potion.name)
-	return gain_relic("treasure", logs)
+		logs.append("🗑️ 你丢弃了【%s】。" % potion.name if not pick_up else "🗑️ 道具栏已满，无法拾取【%s】。" % potion.name)
+	return gain_relic(relic_kind, logs)
 func studio() -> Dictionary:
 	if rng.randi_range(0, 1) == 0: return gain_relic("normal", ["你走进褪色画室，画布后藏着一件遗物。"])
 	player.memory = mini(player.max_memory, player.memory + 3)
@@ -289,9 +308,9 @@ func player_actions(initial_logs: Array = []) -> Dictionary:
 			if not player.used_spell_ids.has(spell.id): remaining_slots += 1
 		var spell_label := "法术位（剩余 %d/3；需要 3 层充能：%d/3）" % [remaining_slots, player.charge]
 		if remaining_slots == 0: spell_label = "法术位（本场三个高阶法术均已释放）"
-		actions = [_action("奥术飞弹 (1d8+4；获得 1 层充能)", "select_target", {"next":"arcane_bolt"}, "combat", player.disabled_action == "arcane_bolt"), _action("奥术洪流（获得 3 层充能）", "arcane_torrent", {}, "combat", player.disabled_action == "arcane_torrent"), _action(spell_label, "spell_slot", {}, "combat", player.disabled_action == "spell_slot" or remaining_slots == 0 or player.charge < 3), _action("🧪 道具栏（%d）" % player.items.size(), "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
+		actions = [_action("奥术飞弹 (1d8+4；获得 1 层充能)", "select_target", {"next":"arcane_bolt"}, "combat", player.disabled_action == "arcane_bolt"), _action("奥术洪流（获得 3 层充能）", "arcane_torrent", {}, "combat", player.disabled_action == "arcane_torrent"), _action(spell_label, "spell_slot", {}, "combat", player.disabled_action == "spell_slot" or remaining_slots == 0 or player.charge < 3), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
 	else:
-		actions = [_action("强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("🧪 道具栏（%d）" % player.items.size(), "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
+		actions = [_action("强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
 	return _result(logs, actions)
 
 func show_item_selection() -> Dictionary:
@@ -664,13 +683,15 @@ func victory(initial_logs: Array) -> Dictionary:
 	logs.append_array(relic_event("combat_end", {}).logs)
 	if not alive(player): return game_over(logs)
 	var boss := enemies.any(func(enemy): return enemy.tier == "boss")
-	var elite := boss or enemies.any(func(enemy): return enemy.tier == "elite")
+	var elite_enemy := enemies.any(func(enemy): return enemy.tier == "elite")
+	var elite := boss or elite_enemy
 	if not elite: var amount := maxi(1, player.max_hp / 5); heal(amount); logs.append("你稍作喘息，恢复 %d 点HP。" % amount)
 	var reward_kind := "elite" if elite else "normal"
 	if boss:
 		var reward := gain_relic(reward_kind, logs, false)
 		# Boss progression must happen after the reward is applied, not after room movement.
 		return boss_victory(reward.logs)
+	if elite_enemy: return try_potion_drop("elite", logs, ELITE_POTION_DROP_CHANCE)
 	return gain_relic(reward_kind, logs)
 
 func boss_victory(logs: Array) -> Dictionary:
@@ -713,7 +734,7 @@ func restart_game() -> Dictionary:
 	return result
 
 func character_text() -> String:
-	var text := "【%s・%s・%s】\n\n【核心属性】\nSTR: %d (%+d)  DEX: %d (%+d)  CON: %d (%+d)\nINT: %d (%+d)  WIS: %d (%+d)  CHA: %d (%+d)\n\n【战斗状态】\nHP: %d/%d\nAC: %d\n护盾: %d\n药水: %d" % [player.name, player.class_name, player.class_title, player.strength, ability_mod(player.strength), player.dexterity, ability_mod(player.dexterity), player.constitution, ability_mod(player.constitution), player.intelligence, ability_mod(player.intelligence), player.wisdom, ability_mod(player.wisdom), player.charisma, ability_mod(player.charisma), player.current_hp, player.max_hp, player.ac, player.temp_hp, player.items.size()]
+	var text := "【%s・%s・%s】\n\n【核心属性】\nSTR: %d (%+d)  DEX: %d (%+d)  CON: %d (%+d)\nINT: %d (%+d)  WIS: %d (%+d)  CHA: %d (%+d)\n\n【战斗状态】\nHP: %d/%d\nAC: %d\n护盾: %d\n药水: %d/%d" % [player.name, player.class_name, player.class_title, player.strength, ability_mod(player.strength), player.dexterity, ability_mod(player.dexterity), player.constitution, ability_mod(player.constitution), player.intelligence, ability_mod(player.intelligence), player.wisdom, ability_mod(player.wisdom), player.charisma, ability_mod(player.charisma), player.current_hp, player.max_hp, player.ac, player.temp_hp, player.items.size(), MAX_POTION_SLOTS]
 	if current_floor >= 2: text += "\n记忆: %d/%d" % [player.memory, player.max_memory]
 	if is_mage():
 		text += "\n充能: %d/5" % player.charge

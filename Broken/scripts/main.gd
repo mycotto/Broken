@@ -327,6 +327,7 @@ func _build_character_cards(actions: Array) -> void:
 		if class_id == "warrior": portrait.texture_normal = _texture("veteran-warrior-portrait.png")
 		elif class_id == "mage": portrait.texture_normal = _texture("female-arcane-mage-refined.png")
 		elif class_id == "spellsword": portrait.texture_normal = _texture("spellsword-portrait.png")
+		elif class_id == "shadowdancer": portrait.texture_normal = _texture("shadowdancer-portrait.png")
 		portrait.ignore_texture_size = true
 		portrait.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 		portrait.custom_minimum_size = Vector2(0, 320)

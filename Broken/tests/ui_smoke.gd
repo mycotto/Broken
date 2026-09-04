@@ -17,7 +17,7 @@ func _run() -> void:
 	_collect_portrait_buttons(screen, portraits)
 	assert(portraits.size() == 4)
 	assert(portraits[2].texture_normal != null)
-	assert(portraits[3].texture_normal == null)
+	assert(portraits[3].texture_normal != null)
 	portraits[0].emit_signal("pressed")
 	await process_frame
 	assert(game_state.player.class_id == "warrior")

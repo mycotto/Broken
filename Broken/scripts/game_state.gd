@@ -34,6 +34,7 @@ var magic_dodge_cooldown := 0
 var magic_armor_ritual_free_available := false
 var first_shield_double_available := false
 var mage_defense_retry_available := false
+var shadow_substitute_cooldown := 0
 
 func _init() -> void:
 	rng.randomize()
@@ -69,14 +70,14 @@ func start_new_game(character_id := "") -> Dictionary:
 	player = {"name":character.name, "class_id":character_id, "class_name":character.class_name, "class_title":character.title, "ac":character.ac, "max_hp":character.hp, "current_hp":character.hp, "temp_hp":0, "memory":10, "max_memory":20,
 		"strength":character.strength, "dexterity":character.dexterity, "constitution":character.constitution, "intelligence":character.intelligence, "wisdom":character.wisdom, "charisma":character.charisma, "bonus_attack":0, "bonus_shield":0,
 		"next_attack_bonus":0, "next_attack_roll_bonus":0, "dream_attack_buff":0, "last_attack_missed":false,
-		"disabled_action":"", "rule_break_penalty":0, "relics":[], "items":[], "charge":0, "bonus_start_charge":0, "free_magic_armor_ritual":false, "forsook_first_boss_reward":false, "warrior_legendary_armor":false, "warrior_wound_ac_ready":false, "mage_legendary_echo":false, "spellsword_legendary_pact":false, "used_spell_ids":[], "third_floor_event_used":false}
+		"disabled_action":"", "rule_break_penalty":0, "relics":[], "items":[], "charge":0, "bonus_start_charge":0, "free_magic_armor_ritual":false, "shadow_marks":0, "bonus_start_shadow":0, "forsook_first_boss_reward":false, "warrior_legendary_armor":false, "warrior_wound_ac_ready":false, "mage_legendary_echo":false, "spellsword_legendary_pact":false, "used_spell_ids":[], "third_floor_event_used":false}
 	current_floor = 1; distance_to_boss = rng.randi_range(6, 9); combat_round = 1; enemies = []
 	return generate_explore(["\n“又一次，从冥河的雾里醒来”\n", "你作为【%s】踏入了破碎世界。" % player.class_name, "地狱第 1 层：灵薄狱 | 距离冥河渡口还有 %d 步" % distance_to_boss])
 
 func character_select() -> Dictionary:
 	phase = "CHARACTER_SELECT"
 	var actions := []
-	for id in ["warrior", "mage", "spellsword"]:
+	for id in ["warrior", "mage", "spellsword", "shadowdancer"]:
 		var character := BrokenGameData.character(id)
 		actions.append(_action("【%s】\n%s\nHP %d | AC %d" % [character.class_name, character.description, character.hp, character.ac], "choose_character", {"character_id":id}, "character"))
 	return _result(["\n=============== 选择你的角色 ===============", "每个角色拥有独立的攻击与防御技能。"], actions)
@@ -87,8 +88,9 @@ func main_menu() -> Dictionary:
 
 func is_mage() -> bool: return not player.is_empty() and player.get("class_id", "") == "mage"
 func is_spellsword() -> bool: return not player.is_empty() and player.get("class_id", "") == "spellsword"
+func is_shadowdancer() -> bool: return not player.is_empty() and player.get("class_id", "") == "shadowdancer"
 func action_display_name(id: String) -> String:
-	var names := {"attack":"强力攻击", "shield_bash":"护盾猛击", "defend":"守卫姿态", "arcane_bolt":"奥术飞弹", "arcane_torrent":"奥术洪流", "spell_slot":"法术位", "spellsword_attack":"魔剑斩", "magic_guard":"魔力护壁", "magic_armor_ritual":"血祭换装"}
+	var names := {"attack":"强力攻击", "shield_bash":"护盾猛击", "defend":"守卫姿态", "arcane_bolt":"奥术飞弹", "arcane_torrent":"奥术洪流", "spell_slot":"法术位", "spellsword_attack":"魔剑斩", "magic_guard":"魔力护壁", "magic_armor_ritual":"血祭换装", "shadow_combo":"匕首连击", "shadow_poison":"上毒刺击", "shadow_execute":"影痕处决"}
 	return names.get(id, id)
 
 func get_status_text() -> String:
@@ -97,6 +99,7 @@ func get_status_text() -> String:
 	if current_floor >= 2: text += " | 🧠 记忆: %d/%d" % [player.memory, player.max_memory]
 	if is_mage(): text += " | ✨ 充能: %d/5" % player.charge
 	if is_spellsword() and not magic_armors.is_empty(): text += " | 🪄 魔装: %d件" % magic_armors.size()
+	if is_shadowdancer(): text += " | 🌑 影痕: %d/4" % player.shadow_marks
 	text += " | 🗺️ 距离: %d步" % distance_to_boss
 	if phase.begins_with("COMBAT") or phase == "TARGETING" or phase.begins_with("SPELL_"): text += " | 回合: %d" % combat_round
 	if player.rule_break_penalty > 0: text += " | ⚠️ 规则崩溃: -%d" % player.rule_break_penalty
@@ -130,6 +133,9 @@ func execute_action(id: String, args := {}) -> Dictionary:
 		"cast_spell": return cast_spell(args.spell_id)
 		"cast_spell_target": return cast_spell_target(args.index)
 		"spellsword_attack": return spellsword_attack(args.index)
+		"shadow_combo": return shadow_combo(args.index)
+		"shadow_poison": return shadow_poison(args.index)
+		"shadow_execute": return shadow_execute(args.index)
 		"magic_guard": return magic_guard()
 		"magic_armor_ritual": return magic_armor_ritual()
 		"equip_magic_armor": return equip_magic_armor(args.armor_id)
@@ -146,6 +152,9 @@ func execute_action(id: String, args := {}) -> Dictionary:
 		"parry": return resolve_parry()
 		"magic_dodge": return resolve_magic_dodge()
 		"magic_parry": return resolve_magic_parry()
+		"shadow_dodge": return resolve_shadow_dodge()
+		"shadow_smoke": return shadow_smoke()
+		"shadow_substitute": return resolve_shadow_substitute()
 		"arcane_barrier": return resolve_arcane_barrier()
 		"energy_counter": return resolve_energy_counter()
 		"restart": return restart_game()
@@ -297,7 +306,8 @@ func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> D
 	remove_magic_armors()
 	phase = "COMBAT_PLAYER"; enemies = []
 	for id in ids: enemies.append(BrokenGameData.make_monster(id))
-	shield_bash_cooldown = 0; defend_cooldown = 0; magic_dodge_cooldown = 0; magic_armor_ritual_free_available = false; first_shield_double_available = player.warrior_legendary_armor; mage_defense_retry_available = player.mage_legendary_echo; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; combat_enemy_attack_penalty_sources = []; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
+	shield_bash_cooldown = 0; defend_cooldown = 0; magic_dodge_cooldown = 0; shadow_substitute_cooldown = 0; magic_armor_ritual_free_available = false; first_shield_double_available = player.warrior_legendary_armor; mage_defense_retry_available = player.mage_legendary_echo; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; combat_enemy_attack_penalty_sources = []; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
+	if is_shadowdancer(): player.shadow_marks = mini(4, player.bonus_start_shadow)
 	if is_mage():
 		player.charge = mini(5, player.bonus_start_charge); player.used_spell_ids = []
 		var spell_ids: Array = BrokenGameData.MAGE_SPELLS.keys(); spell_ids.shuffle()
@@ -338,6 +348,9 @@ func player_actions(initial_logs: Array = []) -> Dictionary:
 	elif is_spellsword():
 		var ritual_label := "契印换装（本场首次免费，选择魔装）" if magic_armor_ritual_free_available else "血祭换装（失去 3 HP，选择魔装）"
 		actions = [_action("魔剑斩（攻击判定 +2；1d8+4）", "select_target", {"next":"spellsword_attack"}, "combat", player.disabled_action == "spellsword_attack"), _action("魔力护壁（获得 5-7 点护盾）", "magic_guard", {}, "combat", player.disabled_action == "magic_guard"), _action(ritual_label, "magic_armor_ritual", {}, "combat", player.disabled_action == "magic_armor_ritual"), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
+	elif is_shadowdancer():
+		var execute_label := "影痕处决（消耗 2 影痕；必中 1d8+8）"
+		actions = [_action("匕首连击（两次独立攻击判定；各 1d6+3）", "select_target", {"next":"shadow_combo"}, "combat", player.disabled_action == "shadow_combo"), _action("上毒刺击（1d6+2；中毒 2 回合）", "select_target", {"next":"shadow_poison"}, "combat", player.disabled_action == "shadow_poison"), _action(execute_label, "select_target", {"next":"shadow_execute"}, "combat", player.disabled_action == "shadow_execute" or player.shadow_marks < 2), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
 	else:
 		actions = [_action("强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
 	return _result(logs, actions)
@@ -483,6 +496,87 @@ func shield_bash(index: int) -> Dictionary:
 func spellsword_attack(index: int) -> Dictionary:
 	if not is_spellsword() or player.disabled_action == "spellsword_attack": return player_actions(["魔剑斩不可用！"])
 	return attack_target(index, "1d8", false, "挥动魔剑斩向", 4, 9)
+
+func gain_shadow_mark(logs: Array, reason: String) -> void:
+	if player.shadow_marks >= 4:
+		logs.append("🌑 影痕已达上限（4/4）。")
+		return
+	player.shadow_marks += 1
+	logs.append("🌑 %s，获得 1 层影痕（%d/4）。" % [reason, player.shadow_marks])
+
+func shadow_attack_roll(target: Dictionary, logs: Array, attack_name: String) -> bool:
+	var roll_bonus: int = player.next_attack_roll_bonus
+	player.next_attack_roll_bonus = 0
+	var roll: int = roll_d20() + 5 + ability_mod(player.dexterity) + player.bonus_attack + combat_attack_roll_bonus - player.rule_break_penalty + roll_bonus
+	logs.append("🗡️ %s攻击【%s】，掷出 %d（DC%d）。" % [attack_name, target.name, roll, target.ac])
+	var rolling := relic_event("attack_roll", {"roll":roll})
+	roll = rolling.value
+	logs.append_array(rolling.logs)
+	var hit: bool = roll >= target.ac
+	if not hit:
+		var missing := relic_event("attack_miss", {"target":target}, {"hit":false, "mult":1.0})
+		logs.append_array(missing.logs)
+		if missing.value.hit: hit = true
+	player.last_attack_missed = not hit
+	if not hit:
+		player.next_attack_bonus = 0
+		player.dream_attack_buff = 0
+		logs.append("✖ 攻击落空！")
+		gain_shadow_mark(logs, "刃影消散")
+	return hit
+
+func shadow_damage(target: Dictionary, dice: String, damage_bonus: int, logs: Array) -> void:
+	var damage := roll_dice(dice) + damage_bonus + combat_damage_bonus
+	var hitting := relic_event("attack_hit", {"target":target, "damage":damage})
+	damage = hitting.value
+	logs.append_array(hitting.logs)
+	if player.next_attack_bonus != 0:
+		damage += player.next_attack_bonus
+		logs.append("⚔️ 力量涌动，伤害 %+d" % player.next_attack_bonus)
+		player.next_attack_bonus = 0
+	if player.dream_attack_buff != 0:
+		damage += player.dream_attack_buff
+		logs.append("💭 梦境释放，伤害 +%d" % player.dream_attack_buff)
+		player.dream_attack_buff = 0
+	logs.append("✔ 命中！造成 %d 点伤害。" % damage)
+	logs.append_array(damage_enemy(target, damage))
+
+func shadow_combo(index: int) -> Dictionary:
+	if not is_shadowdancer() or player.disabled_action == "shadow_combo": return player_actions(["匕首连击不可用！"])
+	var targets := alive_enemies()
+	if index < 0 or index >= targets.size(): return player_actions(["目标已消失。"])
+	var target: Dictionary = targets[index]
+	var logs := ["🗡️ 你化作两道残影，对【%s】发动匕首连击！" % target.name]
+	for strike in range(1, 3):
+		if not alive(target): break
+		if shadow_attack_roll(target, logs, "第 %d 击" % strike): shadow_damage(target, "1d6", 3, logs)
+	if alive_enemies().is_empty(): return victory(logs)
+	return schedule_enemy(logs)
+
+func shadow_poison(index: int) -> Dictionary:
+	if not is_shadowdancer() or player.disabled_action == "shadow_poison": return player_actions(["上毒刺击不可用！"])
+	var targets := alive_enemies()
+	if index < 0 or index >= targets.size(): return player_actions(["目标已消失。"])
+	var target: Dictionary = targets[index]
+	var logs := ["☠️ 你以淬毒短刃刺向【%s】。" % target.name]
+	if shadow_attack_roll(target, logs, "上毒刺击"):
+		shadow_damage(target, "1d6", 2, logs)
+		if alive(target):
+			target.poison_turns = maxi(target.get("poison_turns", 0), 2)
+			logs.append("☠️【%s】中毒：将在回合结束时受到 3 点伤害，持续 2 回合。" % target.name)
+	if alive_enemies().is_empty(): return victory(logs)
+	return schedule_enemy(logs)
+
+func shadow_execute(index: int) -> Dictionary:
+	if not is_shadowdancer() or player.shadow_marks < 2 or player.disabled_action == "shadow_execute": return player_actions(["影痕不足，无法处决！"])
+	var targets := alive_enemies()
+	if index < 0 or index >= targets.size(): return player_actions(["目标已消失。"])
+	player.shadow_marks -= 2
+	var target: Dictionary = targets[index]
+	var logs := ["🌑 消耗 2 层影痕（剩余 %d/4），对【%s】发动必中处决！" % [player.shadow_marks, target.name]]
+	shadow_damage(target, "1d8", 8, logs)
+	if alive_enemies().is_empty(): return victory(logs)
+	return schedule_enemy(logs)
 
 func magic_guard() -> Dictionary:
 	if not is_spellsword() or player.disabled_action == "magic_guard": return player_actions(["魔力护壁不可用！"])
@@ -642,6 +736,9 @@ func enemy_turn() -> Dictionary:
 		var dodge_label := "魔装疾闪（敏捷判定 +5；CD %d）" % magic_dodge_cooldown
 		var armor_strength_bonus := magic_armors.size()
 		return _result(logs + ["请选择应对方式："], [_action("硬抗 (AC判定)", "tough", {}, "combat"), _action(dodge_label, "magic_dodge", {}, "combat", magic_dodge_cooldown > 0), _action("魔装招架（力量判定；魔装 +%d）" % armor_strength_bonus, "magic_parry", {}, "combat")])
+	if is_shadowdancer():
+		var substitute_label := "替身（抵消本次伤害；CD %d）" % shadow_substitute_cooldown
+		return _result(logs + ["请选择应对方式："], [_action("高阶闪避（敏捷判定 +4；成功获得影痕）", "shadow_dodge", {}, "combat"), _action("烟幕（敌人本场攻击判定 -3）", "shadow_smoke", {}, "combat"), _action(substitute_label, "shadow_substitute", {}, "combat", shadow_substitute_cooldown > 0)])
 	return _result(logs + ["请选择应对方式："], [_action("硬抗 (AC判定)", "tough", {}, "combat"), _action("闪避 (敏捷豁免)", "dodge", {}, "combat"), _action("招架 (力量检定)", "parry", {}, "combat")])
 
 func resolve_tough() -> Dictionary:
@@ -688,6 +785,36 @@ func resolve_dodge() -> Dictionary:
 	elif diff >= 0: actual = maxi(1, pending_defense.damage * 5 / 10); logs.append("勉强闪避！受到50%伤害。")
 	else: logs.append("闪避失败！")
 	return apply_and_continue(actual, logs)
+func resolve_shadow_dodge() -> Dictionary:
+	var save: int = roll_d20() + ability_mod(player.dexterity) + 4 - player.rule_break_penalty
+	var diff: int = save - pending_defense.roll
+	var actual: int = pending_defense.damage
+	var logs := ["🌑 高阶闪避掷出 %d（敏捷判定 +4）。" % save]
+	if diff >= 5:
+		actual = 0
+		logs.append("完美闪避！")
+		gain_shadow_mark(logs, "闪入阴影")
+	elif diff >= 2:
+		actual = maxi(1, pending_defense.damage * 2 / 10)
+		logs.append("轻巧闪避！受到20%伤害。")
+		gain_shadow_mark(logs, "闪入阴影")
+	elif diff >= 0:
+		actual = maxi(1, pending_defense.damage * 5 / 10)
+		logs.append("勉强闪避！受到50%伤害。")
+		gain_shadow_mark(logs, "闪入阴影")
+	else:
+		logs.append("闪避失败！")
+	return apply_and_continue(actual, logs)
+func shadow_smoke() -> Dictionary:
+	if not is_shadowdancer(): return _result(["只有影舞者能展开烟幕。"])
+	combat_enemy_attack_penalty += 3
+	combat_enemy_attack_penalty_sources.append("影舞烟幕 -3")
+	pending_defense.roll -= 3
+	return resolve_tough_with_bonus(0, ["🌫️ 烟幕笼罩战场：本次及后续敌人攻击判定 -3（本场当前 -%d）。" % combat_enemy_attack_penalty])
+func resolve_shadow_substitute() -> Dictionary:
+	if not is_shadowdancer() or shadow_substitute_cooldown > 0: return _result(["替身仍在冷却。"])
+	shadow_substitute_cooldown = 3
+	return apply_and_continue(0, ["🪞 你留下替身，本次伤害被完全抵消！"])
 func resolve_magic_dodge() -> Dictionary:
 	if not is_spellsword() or magic_dodge_cooldown > 0: return _result(["魔装疾闪仍在冷却。"])
 	magic_dodge_cooldown = 2
@@ -734,7 +861,14 @@ func end_enemy_turn() -> Dictionary:
 	if shield_bash_cooldown > 0: shield_bash_cooldown -= 1
 	if defend_cooldown > 0: defend_cooldown -= 1
 	if magic_dodge_cooldown > 0: magic_dodge_cooldown -= 1
+	if shadow_substitute_cooldown > 0: shadow_substitute_cooldown -= 1
 	combat_round += 1; var logs := []
+	for enemy in alive_enemies():
+		if enemy.get("poison_turns", 0) > 0:
+			enemy.poison_turns -= 1
+			logs.append("☠️【%s】受到毒素侵蚀（剩余 %d 回合）。" % [enemy.name, enemy.poison_turns])
+			logs.append_array(damage_enemy(enemy, 3))
+	if alive_enemies().is_empty(): return victory(logs)
 	if is_spellsword() and not magic_armors.is_empty():
 		for index in range(magic_armors.size() - 1, -1, -1):
 			var armor: Dictionary = magic_armors[index]
@@ -837,7 +971,7 @@ func boss_phase(enemy: Dictionary) -> Array:
 			logs.append("☀️ 残翼守门人释放【天堂余晖】！")
 			logs.append_array(apply_damage(roll_dice("2d6"))); player.next_attack_roll_bonus -= 2; logs.append("🌟 下次攻击命中 -2！")
 	if kind == "end" and combat_round > 0 and combat_round % 4 == 0:
-		var locks := ["arcane_bolt", "arcane_torrent", "spell_slot"] if is_mage() else ["attack", "shield_bash", "defend"]
+		var locks := ["arcane_bolt", "arcane_torrent", "spell_slot"] if is_mage() else ["shadow_combo", "shadow_poison", "shadow_execute"] if is_shadowdancer() else ["attack", "shield_bash", "defend"]
 		player.disabled_action = locks.pick_random(); logs.append("🚫【法则褪色】下回合无法使用【%s】！" % action_display_name(player.disabled_action))
 	return logs
 
@@ -919,6 +1053,8 @@ func boss_reward_actions(include_forsake := false) -> Array:
 		class_reward = _action("✨ 星术余烬（每场战斗开局获得 1 层充能）", "level_up", {"kind":"mage_charge"})
 	elif is_spellsword():
 		class_reward = _action("🩸 契印恩赐（每场首次血祭换装不消耗生命）", "level_up", {"kind":"spellsword_ritual"})
+	elif is_shadowdancer():
+		class_reward = _action("🌑 暗影余烬（每场战斗开局获得 1 层影痕）", "level_up", {"kind":"shadow_start_mark"})
 	else:
 		class_reward = _action("🛡️ 坚固壁垒（每次获得护盾额外 +1）", "level_up", {"kind":"warrior_shield"})
 	var actions := [_action("🛡️ 战备护甲（获得 5 点护盾）", "level_up", {"kind":"armor"}), _action("❤️ 重塑躯体（最大生命 +5，生命至少恢复至 80%）", "level_up", {"kind":"vitality"}), class_reward]
@@ -928,6 +1064,7 @@ func boss_reward_actions(include_forsake := false) -> Array:
 func legendary_boss_reward_actions() -> Array:
 	if is_mage(): return [_action("🌠 星界回响（首个防御失败 50% 二次判定；攻击 35% 触发第二次）", "level_up", {"kind":"legendary_mage"})]
 	if is_spellsword(): return [_action("🪄 双生魔契（开局装备两件魔装；血祭判定成功免血）", "level_up", {"kind":"legendary_spellsword"})]
+	if is_shadowdancer(): return [_action("🌑 无光王冠（每场战斗开局获得 2 层影痕）", "level_up", {"kind":"legendary_shadow"})]
 	return [_action("👑 不灭壁垒（首个护盾翻倍；承伤后下次受伤判定 AC+3）", "level_up", {"kind":"legendary_warrior"})]
 
 func level_up(kind: String) -> Dictionary:
@@ -946,6 +1083,8 @@ func level_up(kind: String) -> Dictionary:
 			player.bonus_start_charge = mini(5, player.bonus_start_charge + 1); logs.append("✨ 每场战斗开局充能 +1（当前 +%d）。" % player.bonus_start_charge)
 		"spellsword_ritual":
 			player.free_magic_armor_ritual = true; logs.append("🩸 每场战斗首次血祭换装不再消耗生命。")
+		"shadow_start_mark":
+			player.bonus_start_shadow = mini(4, player.bonus_start_shadow + 1); logs.append("🌑 每场战斗开局获得 1 层影痕（当前 +%d）。" % player.bonus_start_shadow)
 		"forsake_boss_reward":
 			player.forsook_first_boss_reward = true; logs.append("🕯️ 你舍弃了眼前的馈赠。第二层 Boss 后将获得职业传说宝物。")
 		"legendary_warrior":
@@ -954,6 +1093,8 @@ func level_up(kind: String) -> Dictionary:
 			player.mage_legendary_echo = true; logs.append("🌠 获得传说宝物【星界回响】！")
 		"legendary_spellsword":
 			player.spellsword_legendary_pact = true; logs.append("🪄 获得传说宝物【双生魔契】！")
+		"legendary_shadow":
+			player.bonus_start_shadow = maxi(2, player.bonus_start_shadow); logs.append("🌑 获得传说宝物【无光王冠】！每场开局至少获得 2 层影痕。")
 		_:
 			player.bonus_shield += 1; logs.append("🛡️ 每次获得护盾额外 +1（当前 +%d）。" % player.bonus_shield)
 	current_floor += 1; distance_to_boss = rng.randi_range(6,9); enemies = []; combat_round = 1
@@ -986,6 +1127,10 @@ func character_text() -> String:
 		text += "\n\n【魔剑士技能】\n1. 魔剑斩：攻击判定 +2，造成 1d8+4 伤害。\n2. 魔力护壁：获得 5-7 点护盾。\n3. 血祭换装：失去 3 点生命后，选择一件魔装；魔装持续 3 回合。\n\n【魔剑士防御】\n硬抗：按 AC 判定。\n魔装疾闪：敏捷判定 +5，冷却 2 回合。\n魔装招架：力量判定；装备魔装时额外 +1。"
 		text += "\n\n【被动・魔能汲取】\n每场战斗结束恢复 1 点生命。"
 		if player.spellsword_legendary_pact: text += "\n\n【传说宝物・双生魔契】\n每场开局装备两件魔装；血祭换装进行 1d20+智力调整值判定，达到 14 时免除生命消耗。"
+	if is_shadowdancer():
+		text += "\n影痕: %d/4" % player.shadow_marks
+		text += "\n\n【影舞者技能】\n1. 匕首连击：进行两次独立攻击判定，各造成 1d6+3 伤害。\n2. 上毒刺击：造成 1d6+2；命中后令敌人中毒 2 回合。\n3. 影痕处决：消耗 2 层影痕，必中造成 1d8+8 伤害。\n\n【影舞者防御】\n高阶闪避：敏捷判定 +4；成功获得 1 层影痕。\n烟幕：本次及本场后续敌方攻击判定 -3。\n替身：抵消本次伤害，冷却 3 回合。"
+		if player.bonus_start_shadow >= 2: text += "\n\n【传说宝物・无光王冠】\n每场战斗开局至少获得 2 层影痕。"
 	if player.class_id == "warrior" and player.warrior_legendary_armor: text += "\n\n【传说宝物・不灭壁垒】\n每场首次获得护盾翻倍；承受真实伤害后，下次硬抗判定 AC +3。"
 	text += "\n\n【已装备遗物】"
 	if player.relics.is_empty(): text += "\n无"

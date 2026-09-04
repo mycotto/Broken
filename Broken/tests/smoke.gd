@@ -11,14 +11,14 @@ func _init() -> void:
 		assert(not monster.attacks.is_empty())
 	for id in BrokenGameData.RELICS:
 		assert(BrokenGameData.make_relic(id).name != "")
-	assert(BrokenGameData.CHARACTERS.size() == 3)
+	assert(BrokenGameData.CHARACTERS.size() == 4)
 	assert(BrokenGameData.MAGE_SPELLS.size() == 6)
 	var game := BrokenGameState.new()
 	var menu := game.main_menu()
 	assert(menu.actions.size() == 2)
 	assert(game.phase == "MAIN_MENU")
 	var select := game.start_new_game()
-	assert(select.actions.size() == 3)
+	assert(select.actions.size() == 4)
 	assert(game.phase == "CHARACTER_SELECT")
 	var start := game.start_new_game("warrior")
 	assert(start.actions.size() == 5)
@@ -83,7 +83,7 @@ func _init() -> void:
 	boss_game.pending_enemies = boss_game.enemies.duplicate()
 	assert(not boss_game.enemy_turn().is_empty())
 	var mage := BrokenGameState.new()
-	assert(mage.start_new_game().actions.size() == 3)
+	assert(mage.start_new_game().actions.size() == 4)
 	mage.start_new_game("mage")
 	assert(mage.player.class_id == "mage")
 	assert(mage.player.intelligence == 18)
@@ -94,6 +94,27 @@ func _init() -> void:
 	assert(mage_combat.actions.size() == 5)
 	assert(mage_combat.actions[2].disabled)
 	assert(mage.player.charge == 1)
+	var shadowdancer := BrokenGameState.new()
+	shadowdancer.start_new_game("shadowdancer")
+	assert(shadowdancer.player.class_id == "shadowdancer")
+	assert(shadowdancer.player.dexterity == 18)
+	var shadow_combat := shadowdancer.start_combat(["LostSoul"], false)
+	assert(shadow_combat.actions.size() == 5)
+	assert(shadow_combat.actions[2].disabled)
+	shadowdancer.player.shadow_marks = 2
+	assert(not shadowdancer.shadow_execute(0).is_empty())
+	shadowdancer.start_combat(["LostSoul"], false)
+	shadowdancer.pending_defense = {"roll":0, "damage":4}
+	shadowdancer.phase = "COMBAT_DEFEND"
+	shadowdancer.resolve_shadow_dodge()
+	assert(shadowdancer.player.shadow_marks == 1)
+	shadowdancer.pending_defense = {"roll":10, "damage":4}
+	shadowdancer.phase = "COMBAT_DEFEND"
+	shadowdancer.resolve_shadow_substitute()
+	assert(shadowdancer.shadow_substitute_cooldown == 3)
+	shadowdancer.enemies[0].poison_turns = 1
+	shadowdancer.end_enemy_turn()
+	assert(shadowdancer.enemies[0].current_hp == 3)
 	var forsaken_mage := BrokenGameState.new()
 	forsaken_mage.start_new_game("mage")
 	forsaken_mage.level_up("forsake_boss_reward")

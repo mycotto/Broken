@@ -63,7 +63,8 @@ const RELICS := {
 const CHARACTERS := {
 	"warrior": {"name": "轮回者", "class_name": "战士", "title": "破碎守卫", "description": "高生命、高 AC 的近战角色。用强力攻击、护盾猛击和守卫姿态稳步推进。", "ac": 16, "hp": 28, "strength": 18, "dexterity": 16, "constitution": 16, "intelligence": 10, "wisdom": 12, "charisma": 13},
 	"mage": {"name": "轮回者", "class_name": "法师", "title": "失落的星术师", "description": "中等生命、较低 AC 的控能角色。积累充能后施放高阶法术。", "ac": 13, "hp": 25, "strength": 8, "dexterity": 14, "constitution": 14, "intelligence": 18, "wisdom": 16, "charisma": 12},
-	"spellsword": {"name": "轮回者", "class_name": "魔剑士", "title": "契印持剑者", "description": "以生命驾驭短暂魔装的近战角色。魔装会强化进攻与防守，但血祭换装需要付出代价。", "ac": 14, "hp": 26, "strength": 16, "dexterity": 14, "constitution": 15, "intelligence": 14, "wisdom": 12, "charisma": 12}
+	"spellsword": {"name": "轮回者", "class_name": "魔剑士", "title": "契印持剑者", "description": "以生命驾驭短暂魔装的近战角色。魔装会强化进攻与防守，但血祭换装需要付出代价。", "ac": 14, "hp": 26, "strength": 16, "dexterity": 14, "constitution": 15, "intelligence": 14, "wisdom": 12, "charisma": 12},
+	"shadowdancer": {"name": "轮回者", "class_name": "影舞者", "title": "雾中刃影", "description": "高敏捷的赌判定角色。攻击落空与闪避成功都会积累影痕，用于发动必中处决。", "ac": 14, "hp": 24, "strength": 12, "dexterity": 18, "constitution": 13, "intelligence": 12, "wisdom": 14, "charisma": 14}
 }
 
 const MAGIC_ARMORS := {

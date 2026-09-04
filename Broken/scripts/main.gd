@@ -252,6 +252,13 @@ func _refresh_status() -> void:
 	status_box.add_child(_status_chip("icon-ac-v2.png", "%d" % game.player.ac))
 	if game.current_floor >= 2: status_box.add_child(_status_chip("icon-memory-v2.png", "%d / %d" % [game.player.memory, game.player.max_memory]))
 	if game.is_mage(): status_box.add_child(_status_chip("icon-mage-spell-charge.png", "%d / 5" % game.player.charge))
+	if game.is_shadowdancer():
+		var shadow_status := Label.new()
+		shadow_status.text = "🌑 %d / 4" % game.player.shadow_marks
+		shadow_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		shadow_status.add_theme_font_size_override("font_size", 18)
+		shadow_status.add_theme_color_override("font_color", Color("a99ad5"))
+		status_box.add_child(shadow_status)
 	if game.is_spellsword() and not game.magic_armors.is_empty():
 		var armor_entries := []
 		for armor in game.magic_armors: armor_entries.append("%s·%d" % [armor.name, armor.turns])
@@ -279,7 +286,9 @@ func _action_icon(action: Dictionary) -> Texture2D:
 		"arcane_barrier":"icon-mage-spell-charge.png", "energy_counter":"icon-spell-slots.png",
 		"items":"potion-bottle.png", "use_item":"potion-bottle.png", "drop_inventory_item":"potion-bottle.png",
 		"spellsword_attack":"icon-warrior-power-attack.png", "magic_guard":"icon-shield-v2.png", "magic_armor_ritual":"icon-mage-spell-charge.png",
-		"magic_dodge":"icon-warrior-dodge.png", "magic_parry":"icon-warrior-parry.png"
+		"magic_dodge":"icon-warrior-dodge.png", "magic_parry":"icon-warrior-parry.png",
+		"shadow_combo":"icon-warrior-power-attack.png", "shadow_poison":"icon-arcane-missile.png", "shadow_execute":"icon-warrior-parry.png",
+		"shadow_dodge":"icon-warrior-dodge.png", "shadow_smoke":"icon-mage-spell-charge.png", "shadow_substitute":"icon-warrior-guard-stance.png"
 	}
 	if icons.has(id): return _texture(icons[id])
 	return null
@@ -307,7 +316,7 @@ func _build_character_cards(actions: Array) -> void:
 	for action in actions:
 		var class_id: String = action.args.get("character_id", "")
 		var card := PanelContainer.new()
-		card.custom_minimum_size = Vector2(360, 0)
+		card.custom_minimum_size = Vector2(320 if actions.size() > 3 else 360, 0)
 		card.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		card.add_theme_stylebox_override("panel", _panel_style())
 		selection_cards.add_child(card)
@@ -321,7 +330,7 @@ func _build_character_cards(actions: Array) -> void:
 		portrait.ignore_texture_size = true
 		portrait.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 		portrait.custom_minimum_size = Vector2(0, 320)
-		portrait.tooltip_text = "点击选择%s" % ("战士" if class_id == "warrior" else "法师" if class_id == "mage" else "魔剑士")
+		portrait.tooltip_text = "点击选择%s" % ("战士" if class_id == "warrior" else "法师" if class_id == "mage" else "魔剑士" if class_id == "spellsword" else "影舞者")
 		portrait.pressed.connect(_pressed.bind(action))
 		content.add_child(portrait)
 		var label := Label.new()

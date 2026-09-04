@@ -31,6 +31,7 @@ var magic_armor_ac_bonus := 0
 var magic_armor_roll_bonus := 0
 var magic_armor_damage_bonus := 0
 var magic_dodge_cooldown := 0
+var magic_armor_ritual_free_available := false
 
 func _init() -> void:
 	rng.randomize()
@@ -66,7 +67,7 @@ func start_new_game(character_id := "") -> Dictionary:
 	player = {"name":character.name, "class_id":character_id, "class_name":character.class_name, "class_title":character.title, "ac":character.ac, "max_hp":character.hp, "current_hp":character.hp, "temp_hp":0, "memory":10, "max_memory":20,
 		"strength":character.strength, "dexterity":character.dexterity, "constitution":character.constitution, "intelligence":character.intelligence, "wisdom":character.wisdom, "charisma":character.charisma, "bonus_attack":0, "bonus_shield":0,
 		"next_attack_bonus":0, "next_attack_roll_bonus":0, "dream_attack_buff":0, "last_attack_missed":false,
-		"disabled_action":"", "rule_break_penalty":0, "relics":[], "items":[], "charge":0, "used_spell_ids":[], "third_floor_event_used":false}
+		"disabled_action":"", "rule_break_penalty":0, "relics":[], "items":[], "charge":0, "bonus_start_charge":0, "free_magic_armor_ritual":false, "used_spell_ids":[], "third_floor_event_used":false}
 	current_floor = 1; distance_to_boss = rng.randi_range(6, 9); combat_round = 1; enemies = []
 	return generate_explore(["\n“又一次，从冥河的雾里醒来”\n", "你作为【%s】踏入了破碎世界。" % player.class_name, "地狱第 1 层：灵薄狱 | 距离冥河渡口还有 %d 步" % distance_to_boss])
 
@@ -294,9 +295,9 @@ func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> D
 	remove_magic_armors()
 	phase = "COMBAT_PLAYER"; enemies = []
 	for id in ids: enemies.append(BrokenGameData.make_monster(id))
-	shield_bash_cooldown = 0; defend_cooldown = 0; magic_dodge_cooldown = 0; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; combat_enemy_attack_penalty_sources = []; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
+	shield_bash_cooldown = 0; defend_cooldown = 0; magic_dodge_cooldown = 0; magic_armor_ritual_free_available = false; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; combat_enemy_attack_penalty_sources = []; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
 	if is_mage():
-		player.charge = 0; player.used_spell_ids = []
+		player.charge = mini(5, player.bonus_start_charge); player.used_spell_ids = []
 		var spell_ids: Array = BrokenGameData.MAGE_SPELLS.keys(); spell_ids.shuffle()
 		for spell_id in spell_ids.slice(0, 3): mage_spells.append(BrokenGameData.mage_spell(spell_id))
 	var penalty := 0
@@ -309,7 +310,9 @@ func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> D
 	var logs := initial_logs.duplicate(); logs.append("\n=============== 战斗开始 ===============")
 	for enemy in enemies: logs.append("遭遇【%s】 HP: %d/%d" % [enemy.name, enemy.current_hp, enemy.max_hp])
 	if is_mage(): logs.append("本场法术位已准备 3 个高阶法术；每个法术可各施放一次，均需 3 层充能。")
-	if is_spellsword(): apply_magic_armor(BrokenGameData.MAGIC_ARMORS.keys().pick_random(), logs)
+	if is_spellsword():
+		magic_armor_ritual_free_available = player.free_magic_armor_ritual
+		apply_magic_armor(BrokenGameData.MAGIC_ARMORS.keys().pick_random(), logs)
 	if penalty > 0: logs.append("⚠️【规则崩溃】所有判定掷骰 -%d！" % penalty)
 	logs.append_array(relic_event("combat_start", {}).logs)
 	if enemies.any(func(e): return e.tier == "boss"): logs.append_array(relic_event("boss_enter", {}).logs)
@@ -328,7 +331,8 @@ func player_actions(initial_logs: Array = []) -> Dictionary:
 		if remaining_slots == 0: spell_label = "法术位（本场三个高阶法术均已释放）"
 		actions = [_action("奥术飞弹 (1d8+4；获得 1 层充能)", "select_target", {"next":"arcane_bolt"}, "combat", player.disabled_action == "arcane_bolt"), _action("奥术洪流（获得 3 层充能）", "arcane_torrent", {}, "combat", player.disabled_action == "arcane_torrent"), _action(spell_label, "spell_slot", {}, "combat", player.disabled_action == "spell_slot" or remaining_slots == 0 or player.charge < 3), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
 	elif is_spellsword():
-		actions = [_action("魔剑斩（攻击判定 +2；1d8+4）", "select_target", {"next":"spellsword_attack"}, "combat", player.disabled_action == "spellsword_attack"), _action("魔力护壁（获得 5-7 点护盾）", "magic_guard", {}, "combat", player.disabled_action == "magic_guard"), _action("血祭换装（失去 3 HP，选择魔装）", "magic_armor_ritual", {}, "combat", player.disabled_action == "magic_armor_ritual"), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
+		var ritual_label := "契印换装（本场首次免费，选择魔装）" if magic_armor_ritual_free_available else "血祭换装（失去 3 HP，选择魔装）"
+		actions = [_action("魔剑斩（攻击判定 +2；1d8+4）", "select_target", {"next":"spellsword_attack"}, "combat", player.disabled_action == "spellsword_attack"), _action("魔力护壁（获得 5-7 点护盾）", "magic_guard", {}, "combat", player.disabled_action == "magic_guard"), _action(ritual_label, "magic_armor_ritual", {}, "combat", player.disabled_action == "magic_armor_ritual"), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
 	else:
 		actions = [_action("强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("🧪 道具栏（%d/%d）" % [player.items.size(), MAX_POTION_SLOTS], "items"), _action("角色面板", "character")]
 	return _result(logs, actions)
@@ -483,9 +487,14 @@ func magic_guard() -> Dictionary:
 
 func magic_armor_ritual() -> Dictionary:
 	if not is_spellsword() or player.disabled_action == "magic_armor_ritual": return player_actions(["血祭换装不可用！"])
-	player.current_hp = maxi(0, player.current_hp - 3)
-	var logs := ["🩸 你以血液唤醒魔装，失去 3 点生命（当前 %d/%d）。" % [player.current_hp, player.max_hp]]
-	if player.current_hp <= 0: logs.append_array(relic_event("death", {}).logs)
+	var logs := []
+	if magic_armor_ritual_free_available:
+		magic_armor_ritual_free_available = false
+		logs.append("🩸【契印恩赐】本场首次血祭换装免除生命消耗。")
+	else:
+		player.current_hp = maxi(0, player.current_hp - 3)
+		logs.append("🩸 你以血液唤醒魔装，失去 3 点生命（当前 %d/%d）。" % [player.current_hp, player.max_hp])
+		if player.current_hp <= 0: logs.append_array(relic_event("death", {}).logs)
 	if not alive(player): return game_over(logs)
 	phase = "MAGIC_ARMOR_SELECT"
 	var actions := []
@@ -828,23 +837,46 @@ func victory(initial_logs: Array) -> Dictionary:
 func boss_victory(logs: Array) -> Dictionary:
 	if current_floor == 1:
 		phase = "LEVEL_UP"
-		logs.append("🎉 胜利！你击败卡戎，通过第一层地狱！请选择强化：")
-		return _result(logs, [_action("⚔️ 灵魂锋芒 (攻击判定+1)", "level_up", {"kind":"attack"}), _action("❤️ 生命汲取 (最大生命+5)", "level_up", {"kind":"hp"}), _action("🛡️ 坚固壁垒 (护盾获得量+1)", "level_up", {"kind":"shield"})])
+		logs.append("🎉 胜利！你击败卡戎，通过第一层地狱！请选择你的角色奖励：")
+		return _result(logs, boss_reward_actions())
 	if current_floor == 2:
 		phase = "LEVEL_UP"
-		logs.append("🎉 胜利！你击败守忆者，守住了自我！请选择强化：")
-		return _result(logs, [_action("⚔️ 灵魂锋芒 (攻击判定+1)", "level_up", {"kind":"attack"}), _action("❤️ 生命汲取 (最大生命+5)", "level_up", {"kind":"hp"}), _action("🛡️ 坚固壁垒 (护盾获得量+1)", "level_up", {"kind":"shield"})])
+		logs.append("🎉 胜利！你击败守忆者，守住了自我！请选择你的角色奖励：")
+		return _result(logs, boss_reward_actions())
 	if current_floor == 3:
 		current_floor = 4; logs.append("\n残翼守门人倒下，天堂的大门轰然碎裂。\n你走进了最深处。这里没有光，没有暗，只有一片纯粹的空白。\n\n=============== 终末 ===============\n一个没有形态的存在在此显现。神老死之后，世界开始遗忘自己。\n你不是在和一个敌人战斗，你是在和“结束”这个概念本身对峙。")
 		return start_combat(["ZhongMoBenShen"], true, logs)
 	phase = "GAME_OVER"; logs.append("🎉 胜利！你击败了终末本身！世界在你身后缓缓重组。")
 	return _result(logs, [_action("🔄 重新开始", "restart")])
 
+func boss_reward_actions() -> Array:
+	var class_reward: Dictionary
+	if is_mage():
+		class_reward = _action("✨ 星术余烬（每场战斗开局获得 1 层充能）", "level_up", {"kind":"mage_charge"})
+	elif is_spellsword():
+		class_reward = _action("🩸 契印恩赐（每场首次血祭换装不消耗生命）", "level_up", {"kind":"spellsword_ritual"})
+	else:
+		class_reward = _action("🛡️ 坚固壁垒（每次获得护盾额外 +1）", "level_up", {"kind":"warrior_shield"})
+	return [_action("🛡️ 战备护甲（获得 5 点护盾）", "level_up", {"kind":"armor"}), _action("❤️ 重塑躯体（最大生命 +5，生命至少恢复至 80%）", "level_up", {"kind":"vitality"}), class_reward]
+
 func level_up(kind: String) -> Dictionary:
 	var logs := []
-	if kind == "attack": player.bonus_attack += 1; logs.append("⚔️ 攻击判定永久 +1。")
-	elif kind == "hp": player.max_hp += 5; player.current_hp += 5; logs.append("❤️ 最大生命永久 +5。")
-	else: player.bonus_shield += 1; logs.append("🛡️ 护盾获得量永久 +1。")
+	match kind:
+		"armor":
+			var shield: int = 5 + player.bonus_shield
+			player.temp_hp += shield; logs.append("🛡️ 获得 %d 点护盾。" % shield)
+		"vitality":
+			player.max_hp += 5
+			var target_hp := ceili(player.max_hp * 0.8)
+			var before_hp: int = player.current_hp
+			player.current_hp = maxi(player.current_hp, target_hp)
+			logs.append("❤️ 最大生命永久 +5；生命 %d → %d/%d（至少恢复至 80%%）。" % [before_hp, player.current_hp, player.max_hp])
+		"mage_charge":
+			player.bonus_start_charge = mini(5, player.bonus_start_charge + 1); logs.append("✨ 每场战斗开局充能 +1（当前 +%d）。" % player.bonus_start_charge)
+		"spellsword_ritual":
+			player.free_magic_armor_ritual = true; logs.append("🩸 每场战斗首次血祭换装不再消耗生命。")
+		_:
+			player.bonus_shield += 1; logs.append("🛡️ 每次获得护盾额外 +1（当前 +%d）。" % player.bonus_shield)
 	current_floor += 1; distance_to_boss = rng.randi_range(6,9); enemies = []; combat_round = 1
 	if current_floor == 2:
 		player.memory = 10; logs.append("\n你踏上了冥河之船，前往更深层的地狱...\n\n=============== 第二层：蚀之人间 ===============\n这里的颜色像被水浸泡过一样剥落，时间法则在此断裂。\n你必须收集“记忆残片”来保持自我，否则将融入背景！")

@@ -1,0 +1,7 @@
+# Godot editor cache and local export artifacts
+.godot/
+dist/
+
+# Local Android SDK, JDK, Gradle caches, and generated Gradle project
+.android-tools/
+android/

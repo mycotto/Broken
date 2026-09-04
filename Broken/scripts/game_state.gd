@@ -13,6 +13,13 @@ var phase := "INIT"
 var shield_bash_cooldown := 0
 var defend_cooldown := 0
 var defending := false
+var combat_ac_bonus := 0
+var combat_damage_bonus := 0
+var combat_attack_roll_bonus := 0
+var combat_enemy_attack_penalty := 0
+var mage_spells: Array = []
+var pending_spell := {}
+var pending_item := {}
 
 func _init() -> void:
 	rng.randomize()
@@ -42,25 +49,47 @@ func _result(logs: Array, actions: Array = [], timer := 0.0, next_action := "") 
 	if timer > 0.0: result["timer"] = timer; result["next_action"] = next_action
 	return result
 
-func start_new_game() -> Dictionary:
-	player = {"name":"轮回者", "ac":16, "max_hp":28, "current_hp":28, "temp_hp":0, "memory":10, "max_memory":20,
-		"strength":18, "dexterity":16, "constitution":16, "intelligence":10, "wisdom":12, "charisma":13, "bonus_attack":0, "bonus_shield":0,
+func start_new_game(character_id := "") -> Dictionary:
+	if character_id.is_empty(): return character_select()
+	var character := BrokenGameData.character(character_id)
+	player = {"name":character.name, "class_id":character_id, "class_name":character.class_name, "class_title":character.title, "ac":character.ac, "max_hp":character.hp, "current_hp":character.hp, "temp_hp":0, "memory":10, "max_memory":20,
+		"strength":character.strength, "dexterity":character.dexterity, "constitution":character.constitution, "intelligence":character.intelligence, "wisdom":character.wisdom, "charisma":character.charisma, "bonus_attack":0, "bonus_shield":0,
 		"next_attack_bonus":0, "next_attack_roll_bonus":0, "dream_attack_buff":0, "last_attack_missed":false,
-		"disabled_action":"", "rule_break_penalty":0, "relics":[]}
+		"disabled_action":"", "rule_break_penalty":0, "relics":[], "items":[], "charge":0, "used_spell_ids":[], "third_floor_event_used":false}
 	current_floor = 1; distance_to_boss = rng.randi_range(6, 9); combat_round = 1; enemies = []
-	return generate_explore(["\n“又一次，从冥河的雾里醒来”\n", "地狱第 1 层：灵薄狱 | 距离冥河渡口还有 %d 步" % distance_to_boss])
+	return generate_explore(["\n“又一次，从冥河的雾里醒来”\n", "你作为【%s】踏入了破碎世界。" % player.class_name, "地狱第 1 层：灵薄狱 | 距离冥河渡口还有 %d 步" % distance_to_boss])
+
+func character_select() -> Dictionary:
+	phase = "CHARACTER_SELECT"
+	var actions := []
+	for id in ["warrior", "mage"]:
+		var character := BrokenGameData.character(id)
+		actions.append(_action("【%s】\n%s\nHP %d | AC %d" % [character.class_name, character.description, character.hp, character.ac], "choose_character", {"character_id":id}, "character"))
+	return _result(["\n=============== 选择你的角色 ===============", "每个角色拥有独立的攻击与防御技能。"], actions)
+
+func main_menu() -> Dictionary:
+	phase = "MAIN_MENU"
+	return _result([], [_action("开始游戏", "open_character_select", {}, "menu"), _action("退出游戏", "quit_game", {}, "menu")])
+
+func is_mage() -> bool: return not player.is_empty() and player.get("class_id", "") == "mage"
+func action_display_name(id: String) -> String:
+	var names := {"attack":"强力攻击", "shield_bash":"护盾猛击", "defend":"守卫姿态", "arcane_bolt":"奥术飞弹", "arcane_torrent":"奥术洪流", "spell_slot":"法术位"}
+	return names.get(id, id)
 
 func get_status_text() -> String:
 	if player.is_empty(): return ""
 	var text := "❤️ HP: %d/%d | 🛡️ 护盾: %d | AC: %d" % [player.current_hp, player.max_hp, player.temp_hp, player.ac]
 	if current_floor >= 2: text += " | 🧠 记忆: %d/%d" % [player.memory, player.max_memory]
+	if is_mage(): text += " | ✨ 充能: %d/5" % player.charge
 	text += " | 🗺️ 距离: %d步" % distance_to_boss
-	if phase.begins_with("COMBAT") or phase == "TARGETING": text += " | 回合: %d" % combat_round
+	if phase.begins_with("COMBAT") or phase == "TARGETING" or phase.begins_with("SPELL_"): text += " | 回合: %d" % combat_round
 	if player.rule_break_penalty > 0: text += " | ⚠️ 规则崩溃: -%d" % player.rule_break_penalty
 	return text
 
 func execute_action(id: String, args := {}) -> Dictionary:
 	match id:
+		"open_character_select": return character_select()
+		"choose_character": return start_new_game(args.character_id)
 		"generate_explore": return generate_explore()
 		"start_combat": return start_combat(args.enemies, args.get("is_elite", false))
 		"rest": return rest()
@@ -70,16 +99,30 @@ func execute_action(id: String, args := {}) -> Dictionary:
 		"memory_shard": return memory_shard()
 		"time_rift": return time_rift()
 		"rule_collapse": return rule_collapse()
+		"third_floor_event": return third_floor_event()
+		"skip_to_third_boss": return skip_to_third_boss()
+		"third_floor_heal": return third_floor_heal()
 		"level_up": return level_up(args.kind)
 		"select_target": return select_target(args.next)
 		"cancel_target": return player_actions()
 		"attack": return player_attack(args.index)
 		"shield_bash": return shield_bash(args.index)
 		"defend": return defend()
+		"arcane_bolt": return arcane_bolt(args.index)
+		"arcane_torrent": return arcane_torrent()
+		"spell_slot": return spell_slot()
+		"cast_spell": return cast_spell(args.spell_id)
+		"cast_spell_target": return cast_spell_target(args.index)
+		"items": return show_item_selection()
+		"use_item": return use_item(args.index)
+		"use_item_target": return use_item_target(args.index)
+		"cancel_items": return player_actions()
 		"enemy_turn": return enemy_turn()
 		"tough": return resolve_tough()
 		"dodge": return resolve_dodge()
 		"parry": return resolve_parry()
+		"arcane_barrier": return resolve_arcane_barrier()
+		"energy_counter": return resolve_energy_counter()
 		"restart": return restart_game()
 	return _result(["无效操作：%s" % id])
 
@@ -99,9 +142,36 @@ func generate_explore(initial_logs: Array = []) -> Dictionary:
 		options = [_action("⚔️ 遭遇 凝固圣歌与空白裂隙", "start_combat", {"enemies":["NingGuShengGe","KongBaiLieXi"]}), _action("⚔️ 遭遇 褪色圣像与神之苔藓", "start_combat", {"enemies":["TuiSeShengXiang","ShenZhiTaiXian"]}), _action("⚔️ 精英：崩解炽天使", "start_combat", {"enemies":["BengJieChiTianShi"],"is_elite":true}), _action("⚔️ 精英：神之回响", "start_combat", {"enemies":["ShenZhiHuiXiang"],"is_elite":true}), _action("🙏 神之遗骸", "rest"), _action("⚠️ 崩坏法则", "rule_collapse"), _action("🧠 记忆残片", "memory_shard")]
 		if rng.randf() < 0.2: options.append(_action("🎁 神之宝库", "treasure"))
 	options.shuffle()
-	var actions := options.slice(0, 3)
-	actions.append(_action("📜 角色面板", "character"))
+	var actions: Array
+	if current_floor == 3 and not player.get("third_floor_event_used", false):
+		# The event remains available until a choice consumes it, so it cannot be missed by rerolling the map.
+		actions = [_action("圣阶抉择", "third_floor_event", {}, "event")]
+		actions.append_array(options.slice(0, 2))
+	else:
+		actions = options.slice(0, 3)
+	actions.append(_action("角色面板", "character"))
 	return _result(logs, actions)
+
+func third_floor_event() -> Dictionary:
+	phase = "THIRD_FLOOR_EVENT"
+	return _result([
+		"\n【圣阶抉择】",
+		"崩坏圣堂的尽头，一段由碎裂星光砌成的阶梯横跨虚空。",
+		"阶梯直通天堂大门；一旁则漂浮着一缕尚未熄灭的神性余晖。"
+	], [
+		_action("踏上断阶：跳过本层，直面残翼守门人", "skip_to_third_boss", {}, "event"),
+		_action("汲取余晖：恢复 5 点生命，继续探索", "third_floor_heal", {}, "event")
+	])
+
+func skip_to_third_boss() -> Dictionary:
+	player.third_floor_event_used = true
+	distance_to_boss = 0
+	return start_floor_boss(["你踏上断裂圣阶。脚下的崩坏圣堂被抛在身后，你直抵天堂大门。"])
+
+func third_floor_heal() -> Dictionary:
+	player.third_floor_event_used = true
+	heal(5)
+	return proceed(["你触碰神性余晖，恢复了 5 点生命。余晖随之熄灭。"])
 
 func rest() -> Dictionary:
 	var amount := roll_dice("1d8") + 3; heal(amount)
@@ -110,9 +180,15 @@ func mystery() -> Dictionary:
 	var logs: Array = []; var event: String = ["trap","heal","buff"].pick_random()
 	if event == "trap": logs.append("⚠️ 你踏入了一个隐蔽的陷阱！"); logs.append_array(apply_damage(roll_dice("1d6")))
 	elif event == "heal": var amount := roll_dice("1d10"); heal(amount); logs.append("✨ 你发现神圣泉水，恢复了 %d 点HP。" % amount)
-	else: player.strength += 1; player.dexterity += 1; logs.append("🛡️ 古老石碑令力量和敏捷永久 +1！")
+	else:
+		if is_mage(): player.intelligence += 1; player.wisdom += 1; logs.append("🔮 古老石碑令智力和智慧永久 +1！")
+		else: player.strength += 1; player.dexterity += 1; logs.append("🛡️ 古老石碑令力量和敏捷永久 +1！")
 	return proceed(logs)
-func treasure() -> Dictionary: return gain_relic("treasure", [])
+func treasure() -> Dictionary:
+	var potion_ids: Array = BrokenGameData.POTIONS.keys()
+	var potion := BrokenGameData.make_potion(potion_ids.pick_random())
+	player.items.append(potion)
+	return gain_relic("treasure", ["🧪 宝箱里发现【%s】！效果：%s" % [potion.name, potion.description]])
 func studio() -> Dictionary:
 	if rng.randi_range(0, 1) == 0: return gain_relic("normal", ["你走进褪色画室，画布后藏着一件遗物。"])
 	player.memory = mini(player.max_memory, player.memory + 3)
@@ -167,7 +243,11 @@ func start_floor_boss(logs: Array) -> Dictionary:
 func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> Dictionary:
 	phase = "COMBAT_PLAYER"; enemies = []
 	for id in ids: enemies.append(BrokenGameData.make_monster(id))
-	shield_bash_cooldown = 0; defend_cooldown = 0; defending = false; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
+	shield_bash_cooldown = 0; defend_cooldown = 0; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
+	if is_mage():
+		player.charge = 0; player.used_spell_ids = []
+		var spell_ids: Array = BrokenGameData.MAGE_SPELLS.keys(); spell_ids.shuffle()
+		for spell_id in spell_ids.slice(0, 3): mage_spells.append(BrokenGameData.mage_spell(spell_id))
 	var penalty := 0
 	if current_floor >= 3:
 		for enemy in enemies:
@@ -177,6 +257,7 @@ func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> D
 	player.rule_break_penalty = penalty
 	var logs := initial_logs.duplicate(); logs.append("\n=============== 战斗开始 ===============")
 	for enemy in enemies: logs.append("遭遇【%s】 HP: %d/%d" % [enemy.name, enemy.current_hp, enemy.max_hp])
+	if is_mage(): logs.append("本场法术位已准备 3 个高阶法术；每个法术可各施放一次，均需 3 层充能。")
 	if penalty > 0: logs.append("⚠️【规则崩溃】所有判定掷骰 -%d！" % penalty)
 	logs.append_array(relic_event("combat_start", {}).logs)
 	if enemies.any(func(e): return e.tier == "boss"): logs.append_array(relic_event("boss_enter", {}).logs)
@@ -186,25 +267,146 @@ func player_actions(initial_logs: Array = []) -> Dictionary:
 	if not alive(player): return game_over(initial_logs)
 	if alive_enemies().is_empty(): return victory(initial_logs)
 	phase = "COMBAT_PLAYER"; var logs := initial_logs.duplicate(); logs.append("\n【你的回合】")
-	var actions := [_action("⚔️ 强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("🛡️ 护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("🏃 守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("📜 角色面板", "character")]
+	var actions: Array
+	if is_mage():
+		var remaining_slots := 0
+		for spell in mage_spells:
+			if not player.used_spell_ids.has(spell.id): remaining_slots += 1
+		var spell_label := "法术位（剩余 %d/3；需要 3 层充能：%d/3）" % [remaining_slots, player.charge]
+		if remaining_slots == 0: spell_label = "法术位（本场三个高阶法术均已释放）"
+		actions = [_action("奥术飞弹 (1d8+4；获得 1 层充能)", "select_target", {"next":"arcane_bolt"}, "combat", player.disabled_action == "arcane_bolt"), _action("奥术洪流（获得 3 层充能）", "arcane_torrent", {}, "combat", player.disabled_action == "arcane_torrent"), _action(spell_label, "spell_slot", {}, "combat", player.disabled_action == "spell_slot" or remaining_slots == 0 or player.charge < 3), _action("🧪 道具栏（%d）" % player.items.size(), "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
+	else:
+		actions = [_action("强力攻击 (1d10+5)", "select_target", {"next":"attack"}, "combat", player.disabled_action == "attack"), _action("护盾猛击 (1d8+5 伤害+护盾)", "select_target", {"next":"shield_bash"}, "combat", player.disabled_action == "shield_bash" or shield_bash_cooldown > 0), _action("守卫姿态 (AC+3, 下次攻击+2命中/+1伤害)", "defend", {}, "combat", player.disabled_action == "defend" or defend_cooldown > 0), _action("🧪 道具栏（%d）" % player.items.size(), "items", {}, "combat", player.items.is_empty()), _action("角色面板", "character")]
 	return _result(logs, actions)
+
+func show_item_selection() -> Dictionary:
+	if phase != "COMBAT_PLAYER": return player_actions(["药水只能在你的战斗回合使用。"])
+	if player.items.is_empty(): return player_actions(["道具栏为空。"])
+	phase = "ITEM_SELECT"
+	var actions := []
+	for index in range(player.items.size()):
+		var item: Dictionary = player.items[index]
+		actions.append(_action("🧪【%s】\n%s" % [item.name, item.description], "use_item", {"index":index}, "item"))
+	actions.append(_action("返回战斗行动", "cancel_items"))
+	return _result(["\n【道具栏】使用药水不消耗本回合行动。"], actions)
+
+func use_item(index: int) -> Dictionary:
+	if phase != "ITEM_SELECT" or index < 0 or index >= player.items.size(): return player_actions(["该药水不可用。"])
+	var item: Dictionary = player.items[index]
+	if item.get("targeted", false):
+		pending_item = {"index":index, "item":item}; phase = "ITEM_TARGET"
+		var actions := []; var target_index := 0
+		for enemy in alive_enemies():
+			actions.append(_action("对【%s】使用【%s】(HP:%d/%d)" % [enemy.name, item.name, enemy.current_hp, enemy.max_hp], "use_item_target", {"index":target_index}, "target")); target_index += 1
+		actions.append(_action("返回道具栏", "items"))
+		return _result(["🎯 请选择【%s】的目标：" % item.name], actions)
+	return apply_item(item, index, {})
+
+func use_item_target(index: int) -> Dictionary:
+	var targets := alive_enemies()
+	if pending_item.is_empty() or index < 0 or index >= targets.size(): return show_item_selection()
+	return apply_item(pending_item.item, pending_item.index, targets[index])
+
+func apply_item(item: Dictionary, item_index: int, target: Dictionary) -> Dictionary:
+	if item_index < 0 or item_index >= player.items.size(): return player_actions(["该药水不可用。"])
+	player.items.remove_at(item_index); pending_item = {}
+	var logs := ["🧪 使用【%s】。" % item.name]
+	match item.kind:
+		"heal":
+			var before: int = player.current_hp; heal(item.amount); logs.append("❤️ 恢复 %d 点生命（%d → %d）。" % [player.current_hp - before, before, player.current_hp])
+		"damage_bonus":
+			combat_damage_bonus += item.amount; logs.append("⚔️ 本场攻击伤害 +%d（当前 +%d）。" % [item.amount, combat_damage_bonus])
+		"roll_bonus":
+			combat_attack_roll_bonus += item.amount; logs.append("🎯 本场攻击判定 +%d（当前 +%d）。" % [item.amount, combat_attack_roll_bonus])
+		"enemy_roll_penalty":
+			combat_enemy_attack_penalty += item.amount; logs.append("🌫️ 敌人本场攻击判定 -%d（当前 -%d）。" % [item.amount, combat_enemy_attack_penalty])
+		"shield":
+			var shield: int = item.amount + player.bonus_shield; player.temp_hp += shield; logs.append("🛡️ 获得 %d 点护盾。" % shield)
+		"damage":
+			if target.is_empty(): return player_actions(["需要选择伤害药水的目标。"])
+			logs.append("💥 对【%s】造成 %d 点伤害。" % [target.name, item.amount]); logs.append_array(damage_enemy(target, item.amount))
+	if alive_enemies().is_empty(): return victory(logs)
+	return player_actions(logs)
 
 func select_target(next: String) -> Dictionary:
 	phase = "TARGETING"; var actions := []; var index := 0
 	for enemy in alive_enemies(): actions.append(_action("攻击【%s】(HP:%d/%d)" % [enemy.name, enemy.current_hp, enemy.max_hp], next, {"index":index}, "target")); index += 1
-	actions.append(_action("↩️ 取消", "cancel_target"))
+	actions.append(_action("取消", "cancel_target"))
 	return _result(["\n🎯 请选择攻击目标："], actions)
 
 func player_attack(index: int) -> Dictionary: return attack_target(index, "1d10", false)
+func arcane_bolt(index: int) -> Dictionary:
+	var result := attack_target(index, "1d8", false, "施放【奥术飞弹】攻击", 4, 7)
+	player.charge = mini(5, player.charge + 1)
+	result.logs.insert(0, "✨ 奥术飞弹凝聚成功，获得 1 层充能（当前 %d/5）。" % player.charge)
+	return result
+
+func arcane_torrent() -> Dictionary:
+	if player.disabled_action == "arcane_torrent": return player_actions(["奥术洪流不可用！"])
+	var before: int = player.charge; player.charge = mini(5, player.charge + 3)
+	return schedule_enemy(["🌊 奥术洪流涌入体内，充能 %d → %d/5。" % [before, player.charge]])
+
+func spell_slot() -> Dictionary:
+	var remaining_slots := 0
+	for spell in mage_spells:
+		if not player.used_spell_ids.has(spell.id): remaining_slots += 1
+	if remaining_slots == 0 or player.charge < 3: return player_actions(["法术位尚未就绪！"])
+	phase = "SPELL_SELECT"
+	var actions := []
+	for spell in mage_spells:
+		actions.append(_action("【%s】\n%s" % [spell.name, spell.description], "cast_spell", {"spell_id":spell.id}, "spell", player.used_spell_ids.has(spell.id)))
+	actions.append(_action("暂不施放", "cancel_target"))
+	return _result(["\n【法术位已就绪】从本场抽取的 3 个高阶法术中选择一个。", "每次释放消耗 3 层充能；本场剩余 %d 个高阶法术可用。" % remaining_slots], actions)
+
+func cast_spell(spell_id: String) -> Dictionary:
+	if player.charge < 3: return player_actions(["法术位尚未就绪！"])
+	var spell := BrokenGameData.mage_spell(spell_id)
+	if not mage_spells.any(func(item): return item.id == spell_id): return player_actions(["该法术不在本场法术位中。"])
+	if player.used_spell_ids.has(spell_id): return spell_slot()
+	if spell.targeted:
+		pending_spell = spell; phase = "SPELL_TARGET"
+		var actions := []; var index := 0
+		for enemy in alive_enemies(): actions.append(_action("对【%s】施放【%s】(HP:%d/%d)" % [enemy.name, spell.name, enemy.current_hp, enemy.max_hp], "cast_spell_target", {"index":index}, "target")); index += 1
+		actions.append(_action("返回法术选择", "spell_slot"))
+		return _result(["🎯 请选择【%s】的目标：" % spell.name], actions)
+	return resolve_spell(spell, {})
+
+func cast_spell_target(index: int) -> Dictionary:
+	var targets := alive_enemies()
+	if pending_spell.is_empty() or index < 0 or index >= targets.size(): return spell_slot()
+	return resolve_spell(pending_spell, targets[index])
+
+func resolve_spell(spell: Dictionary, target: Dictionary) -> Dictionary:
+	player.charge -= 3; player.used_spell_ids.append(spell.id); pending_spell = {}
+	var logs := ["释放法术位【%s】！消耗 3 层充能（剩余 %d/5）。" % [spell.name, player.charge]]
+	match spell.kind:
+		"damage":
+			logs.append("☄️【%s】必中，造成 %d 点伤害。" % [spell.name, spell.amount]); logs.append_array(damage_enemy(target, spell.amount))
+		"shield":
+			player.temp_hp += spell.amount + player.bonus_shield; logs.append("🛡️ 获得 %d 点护盾。" % (spell.amount + player.bonus_shield))
+		"ac":
+			player.ac += spell.amount; combat_ac_bonus += spell.amount; logs.append("🌀 绝对领域展开，本场 AC +%d（当前 %d）。" % [spell.amount, player.ac])
+		"damage_shield":
+			logs.append("⚡【%s】必中，造成 %d 点伤害。" % [spell.name, spell.amount]); logs.append_array(damage_enemy(target, spell.amount)); player.temp_hp += spell.shield + player.bonus_shield; logs.append("🛡️ 获得 %d 点护盾。" % (spell.shield + player.bonus_shield))
+		"heal_shield":
+			heal(spell.amount); player.temp_hp += spell.shield + player.bonus_shield; logs.append("❤️ 恢复 %d 点生命，获得 %d 点护盾。" % [spell.amount, spell.shield + player.bonus_shield])
+		"curse":
+			player.temp_hp += spell.amount + player.bonus_shield; logs.append("🛡️ 获得 %d 点护盾。" % (spell.amount + player.bonus_shield))
+			for enemy in alive_enemies():
+				enemy.combat_attack_penalty += 3; enemy.ac -= 2; logs.append("【%s】陷入失序：本场攻击判定 -3，AC -2（当前 AC %d）。" % [enemy.name, enemy.ac])
+	if alive_enemies().is_empty(): return victory(logs)
+	return schedule_enemy(logs)
+
 func shield_bash(index: int) -> Dictionary:
 	if shield_bash_cooldown > 0 or player.disabled_action == "shield_bash": return player_actions(["护盾猛击不可用！"])
 	return attack_target(index, "1d8", true)
-func attack_target(index: int, dice: String, bash: bool) -> Dictionary:
+func attack_target(index: int, dice: String, bash: bool, attack_text := "", damage_bonus := 5, roll_base := 7) -> Dictionary:
 	var targets := alive_enemies()
 	if index < 0 or index >= targets.size(): return player_actions(["目标已消失。"])
 	var target: Dictionary = targets[index]; var roll_bonus: int = player.next_attack_roll_bonus; player.next_attack_roll_bonus = 0
-	var roll: int = roll_d20() + 7 + player.bonus_attack - player.rule_break_penalty + roll_bonus
-	var logs := ["你%s %s，掷出 %d (DC%d)" % ["举盾撞向" if bash else "挥剑攻击", target.name, roll, target.ac]]
+	var roll: int = roll_d20() + roll_base + player.bonus_attack + combat_attack_roll_bonus - player.rule_break_penalty + roll_bonus
+	var action_text: String = attack_text if not attack_text.is_empty() else ("举盾撞向" if bash else "挥剑攻击")
+	var logs := ["你%s %s，掷出 %d (DC%d)" % [action_text, target.name, roll, target.ac]]
 	if roll_bonus != 0: logs.append("🎯 蓄力命中骰 %+d" % roll_bonus)
 	var rolling := relic_event("attack_roll", {"roll":roll}); roll = rolling.value; logs.append_array(rolling.logs)
 	var hit: bool = roll >= target.ac; var forced := false
@@ -213,7 +415,7 @@ func attack_target(index: int, dice: String, bash: bool) -> Dictionary:
 		if missing.value.hit: hit = true; forced = true
 	player.last_attack_missed = not hit
 	if hit:
-		var damage := roll_dice(dice) + 5
+		var damage := roll_dice(dice) + damage_bonus + combat_damage_bonus
 		var hitting := relic_event("attack_hit", {"target":target, "damage":damage}); damage = hitting.value; logs.append_array(hitting.logs)
 		if not alive(player): return game_over(logs)
 		if player.next_attack_bonus != 0: damage += player.next_attack_bonus; logs.append("⚔️ 力量涌动，伤害 %+d" % player.next_attack_bonus); player.next_attack_bonus = 0
@@ -251,7 +453,7 @@ func enemy_turn() -> Dictionary:
 		player.memory -= attack.memory_damage; logs.append("🧠 %s 发动【遗忘低语】！无法防御，记忆 -%d。" % [enemy.name, attack.memory_damage])
 		if player.memory <= 0: return memory_over(logs)
 		return _result(logs, [], 0.35, "enemy_turn")
-	var penalty: int = enemy.next_attack_penalty; var enemy_roll: int = roll_d20() + attack.bonus - penalty; enemy.next_attack_penalty = 0
+	var penalty: int = enemy.next_attack_penalty + enemy.combat_attack_penalty + combat_enemy_attack_penalty; var enemy_roll: int = roll_d20() + attack.bonus - penalty; enemy.next_attack_penalty = 0
 	var damage := roll_dice(attack.damage); logs.append("⚔️ %s 发动【%s】！掷出 %d，造成 %d 点伤害。" % [enemy.name, attack.name, enemy_roll, damage])
 	var defended := relic_event("defend", {"roll":enemy_roll, "damage":damage})
 	logs.append_array(defended.logs)
@@ -262,26 +464,41 @@ func enemy_turn() -> Dictionary:
 		return _result(logs, [], 0.35, "enemy_turn")
 	pending_defense = {"roll":enemy_roll, "damage":damage}
 	phase = "COMBAT_DEFEND"
-	return _result(logs + ["请选择应对方式："], [_action("🛡️ 硬抗 (AC判定)", "tough", {}, "combat"), _action("🏃 闪避 (敏捷豁免)", "dodge", {}, "combat"), _action("⚔️ 招架 (力量检定)", "parry", {}, "combat")])
+	if is_mage():
+		return _result(logs + ["请选择应对方式："], [_action("奥术屏障（消耗 1 充能，本次 AC+3，获得 6 护盾）", "arcane_barrier", {}, "combat", player.charge < 1), _action("硬抗 (AC判定)", "tough", {}, "combat"), _action("能量对冲（智慧判定；失败受伤+35%，获得 1 充能）", "energy_counter", {}, "combat")])
+	return _result(logs + ["请选择应对方式："], [_action("硬抗 (AC判定)", "tough", {}, "combat"), _action("闪避 (敏捷豁免)", "dodge", {}, "combat"), _action("招架 (力量检定)", "parry", {}, "combat")])
 
 func resolve_tough() -> Dictionary:
-	var diff: int = player.ac - pending_defense.roll; var actual: int = pending_defense.damage; var logs := []
+	return resolve_tough_with_bonus(0, [])
+func resolve_arcane_barrier() -> Dictionary:
+	if player.charge < 1: return _result(["充能不足，无法展开奥术屏障。"])
+	player.charge -= 1; player.temp_hp += 6
+	return resolve_tough_with_bonus(3, ["✨ 消耗 1 层充能，获得 6 点护盾；奥术屏障使本次防御 AC +3（充能剩余 %d/5）。" % player.charge])
+func resolve_tough_with_bonus(ac_bonus: int, logs: Array) -> Dictionary:
+	var diff: int = player.ac + ac_bonus - pending_defense.roll; var actual: int = pending_defense.damage
 	if diff >= 5: actual = 0; logs.append("🛡️ 完美格挡！免疫伤害。")
-	elif diff >= 2: actual = maxi(1, pending_defense.damage * 2 / 10); logs.append("🛡️ 擦伤！受到20%%伤害。")
-	elif diff >= 0: actual = maxi(1, pending_defense.damage * 3 / 10); logs.append("🛡️ 硬抗！受到30%%伤害。")
+	elif diff >= 2: actual = maxi(1, pending_defense.damage * 2 / 10); logs.append("🛡️ 擦伤！受到20%伤害。")
+	elif diff >= 0: actual = maxi(1, pending_defense.damage * 3 / 10); logs.append("🛡️ 硬抗！受到30%伤害。")
 	else: logs.append("💥 防御被击穿！")
 	return apply_and_continue(actual, logs)
 func resolve_dodge() -> Dictionary:
 	var save: int = roll_d20() + ability_mod(player.dexterity) - player.rule_break_penalty; var diff: int = save - pending_defense.roll; var actual: int = pending_defense.damage; var logs := ["🏃 敏捷豁免掷出 %d" % save]
 	if diff >= 5: actual = 0; logs.append("完美闪避！")
-	elif diff >= 2: actual = maxi(1, pending_defense.damage * 2 / 10); logs.append("轻巧闪避！受到20%%伤害。")
-	elif diff >= 0: actual = maxi(1, pending_defense.damage * 5 / 10); logs.append("勉强闪避！受到50%%伤害。")
+	elif diff >= 2: actual = maxi(1, pending_defense.damage * 2 / 10); logs.append("轻巧闪避！受到20%伤害。")
+	elif diff >= 0: actual = maxi(1, pending_defense.damage * 5 / 10); logs.append("勉强闪避！受到50%伤害。")
 	else: logs.append("闪避失败！")
 	return apply_and_continue(actual, logs)
 func resolve_parry() -> Dictionary:
 	var strength: int = ability_mod(player.strength); var check: int = roll_d20() + strength - player.rule_break_penalty; var actual: int = pending_defense.damage; var logs := ["⚔️ 力量检定掷出 %d" % check]
 	if check >= pending_defense.roll: var reduced := roll_dice("1d8") + strength; actual = maxi(0, actual - reduced); logs.append("招架成功！抵消 %d 点伤害。" % reduced)
 	else: logs.append("招架失败！")
+	return apply_and_continue(actual, logs)
+func resolve_energy_counter() -> Dictionary:
+	var wisdom: int = ability_mod(player.wisdom); var check: int = roll_d20() + wisdom - player.rule_break_penalty; var actual: int = pending_defense.damage; var logs := ["🔮 智慧检定掷出 %d" % check]
+	if check >= pending_defense.roll:
+		actual = maxi(1, pending_defense.damage * 3 / 10); logs.append("能量对冲成功！受到30%伤害。")
+	else:
+		actual = ceili(pending_defense.damage * 1.35); player.charge = mini(5, player.charge + 1); logs.append("⚠️ 能量对冲失控！本次受到伤害 +35%%，但获得 1 层额外充能（当前 %d/5）。" % player.charge)
 	return apply_and_continue(actual, logs)
 func apply_and_continue(amount: int, logs: Array) -> Dictionary:
 	logs.append_array(apply_damage(amount))
@@ -306,7 +523,7 @@ func apply_damage(amount: int) -> Array:
 	var modified := relic_event("pre_damage", {"damage":amount}); var damage: int = modified.value; var logs: Array = modified.logs
 	if player.temp_hp > 0:
 		var shield := mini(player.temp_hp, damage); player.temp_hp -= shield; damage -= shield; logs.append("🛡️ 护盾吸收 %d 点伤害。" % shield)
-	if damage > 0: player.current_hp = maxi(0, player.current_hp - damage); logs.append("➥ 轮回者受到 %d 点伤害，剩余 %d/%d" % [damage, player.current_hp, player.max_hp])
+	if damage > 0: player.current_hp = maxi(0, player.current_hp - damage); logs.append("➥ %s受到 %d 点伤害，剩余 %d/%d" % [player.name, damage, player.current_hp, player.max_hp])
 	if player.current_hp <= 0:
 		var death := relic_event("death", {}); logs.append_array(death.logs)
 	return logs
@@ -361,7 +578,7 @@ func relic_event(event: String, context: Dictionary, default_value = null) -> Di
 			"pre_damage":
 				if id == "nameplate" and value > 0: value = maxi(0, value - 2); player.next_attack_bonus -= 1; logs.append("🛡️【凝固者的铭牌】减免2点伤害，下次攻击伤害-1。")
 			"death":
-				if player.current_hp <= 0 and id == "soul_ticket" and not relic.used: relic.used = true; player.current_hp = player.max_hp * 3 / 10; value = true; logs.append("✨【渡魂符】复活，生命恢复至30%%。")
+				if player.current_hp <= 0 and id == "soul_ticket" and not relic.used: relic.used = true; player.current_hp = player.max_hp * 3 / 10; value = true; logs.append("✨【渡魂符】复活，生命恢复至30%。")
 				if player.current_hp <= 0 and id == "memory_tablet" and not relic.used: relic.used = true; player.current_hp = 5; player.temp_hp += 5; value = true; logs.append("🪨【守忆者刻名石板】复活，恢复5血5盾。")
 				if player.current_hp <= 0 and id == "god_ash" and not relic.used: relic.used = true; player.current_hp = 8; value = true; logs.append("🌋【神之灰烬】复活，恢复8点生命。")
 			"combat_end":
@@ -379,7 +596,8 @@ func boss_phase(enemy: Dictionary) -> Array:
 			logs.append("☀️ 残翼守门人释放【天堂余晖】！")
 			logs.append_array(apply_damage(roll_dice("2d6"))); player.next_attack_roll_bonus -= 2; logs.append("🌟 下次攻击命中 -2！")
 	if kind == "end" and combat_round > 0 and combat_round % 4 == 0:
-		var locks := ["attack","shield_bash","defend"]; player.disabled_action = locks.pick_random(); logs.append("🚫【法则褪色】下回合无法使用【%s】！" % player.disabled_action)
+		var locks := ["arcane_bolt", "arcane_torrent", "spell_slot"] if is_mage() else ["attack", "shield_bash", "defend"]
+		player.disabled_action = locks.pick_random(); logs.append("🚫【法则褪色】下回合无法使用【%s】！" % action_display_name(player.disabled_action))
 	return logs
 
 func gain_relic(kind: String, initial_logs: Array, advance := true) -> Dictionary:
@@ -411,6 +629,8 @@ func acquire_relic(relic: Dictionary) -> Array:
 
 func victory(initial_logs: Array) -> Dictionary:
 	var logs := initial_logs.duplicate(); logs.append("\n=============== 战斗胜利 ===============")
+	if combat_ac_bonus > 0:
+		player.ac -= combat_ac_bonus; logs.append("🌀 战斗结束，绝对领域消散，AC 恢复至 %d。" % player.ac); combat_ac_bonus = 0
 	if player.temp_hp > 0: player.temp_hp = 0; logs.append("战斗结束，护盾消散。")
 	logs.append_array(relic_event("combat_end", {}).logs)
 	if not alive(player): return game_over(logs)
@@ -459,15 +679,20 @@ func memory_over(logs: Array) -> Dictionary:
 	return _result(logs, [_action("🔄 轮回重启", "restart")])
 
 func restart_game() -> Dictionary:
-	var result := start_new_game()
+	var result := character_select()
 	result["clear_log"] = true
 	return result
 
 func character_text() -> String:
-	var text := "【核心属性】\nSTR: %d (%+d)  DEX: %d (%+d)  CON: %d (%+d)\nINT: %d (%+d)  WIS: %d (%+d)  CHA: %d (%+d)\n\n【战斗状态】\nHP: %d/%d\nAC: %d\n护盾: %d" % [player.strength, ability_mod(player.strength), player.dexterity, ability_mod(player.dexterity), player.constitution, ability_mod(player.constitution), player.intelligence, ability_mod(player.intelligence), player.wisdom, ability_mod(player.wisdom), player.charisma, ability_mod(player.charisma), player.current_hp, player.max_hp, player.ac, player.temp_hp]
+	var text := "【%s・%s・%s】\n\n【核心属性】\nSTR: %d (%+d)  DEX: %d (%+d)  CON: %d (%+d)\nINT: %d (%+d)  WIS: %d (%+d)  CHA: %d (%+d)\n\n【战斗状态】\nHP: %d/%d\nAC: %d\n护盾: %d\n药水: %d" % [player.name, player.class_name, player.class_title, player.strength, ability_mod(player.strength), player.dexterity, ability_mod(player.dexterity), player.constitution, ability_mod(player.constitution), player.intelligence, ability_mod(player.intelligence), player.wisdom, ability_mod(player.wisdom), player.charisma, ability_mod(player.charisma), player.current_hp, player.max_hp, player.ac, player.temp_hp, player.items.size()]
 	if current_floor >= 2: text += "\n记忆: %d/%d" % [player.memory, player.max_memory]
+	if is_mage():
+		text += "\n充能: %d/5" % player.charge
+		text += "\n\n【法师技能】\n1. 奥术飞弹：1d8+4，使用后获得 1 层充能。\n2. 奥术洪流：获得 3 层充能。\n3. 法术位：充能达到 3 层后可用；本场抽取 3 个高阶法术，每个都能各施放一次，必中/直接生效。\n\n【法师防御】\n奥术屏障：消耗 1 层充能，获得 6 点护盾，本次 AC +3。\n硬抗：按 AC 判定。\n能量对冲：智慧判定成功受30%伤害；失败本次伤害+35%，获得1层充能。"
 	text += "\n\n【已装备遗物】"
 	if player.relics.is_empty(): text += "\n无"
 	for relic in player.relics: text += "\n✨ %s：%s" % [relic.name, relic.effect]
-	text += "\n\n【游戏规则】\n1. 防御判定：\n硬抗：AC-敌方掷骰 >=5免疫，>=2受20%，>=0受30%，<0全额。\n闪避：敏捷豁免同上，但>=0受50%。\n招架：力量检定>=敌方则抵消1d8+力量调整值伤害。\n2. 第二层法则：记忆归零将导致融入背景（Game Over）。"
+	text += "\n\n【游戏规则】\n1. 防御判定：\n硬抗：AC-敌方掷骰 >=5免疫，>=2受20%，>=0受30%，<0全额。"
+	if not is_mage(): text += "\n闪避：敏捷豁免同上，但>=0受50%。\n招架：力量检定>=敌方则抵消1d8+力量调整值伤害。"
+	text += "\n2. 第二层法则：记忆归零将导致融入背景（Game Over）。"
 	return text

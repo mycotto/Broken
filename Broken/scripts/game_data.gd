@@ -60,15 +60,52 @@ const RELICS := {
 	"court_ink": {"name": "审判庭的墨水", "rarity": "common", "effect": "对精英敌人造成的伤害 +1", "lore": "审判官用来书写判决的墨水。"}
 }
 
+const CHARACTERS := {
+	"warrior": {"name": "轮回者", "class_name": "战士", "title": "破碎守卫", "description": "高生命、高 AC 的近战角色。用强力攻击、护盾猛击和守卫姿态稳步推进。", "ac": 16, "hp": 28, "strength": 18, "dexterity": 16, "constitution": 16, "intelligence": 10, "wisdom": 12, "charisma": 13},
+	"mage": {"name": "轮回者", "class_name": "法师", "title": "失落的星术师", "description": "中等生命、较低 AC 的控能角色。积累充能后施放高阶法术。", "ac": 13, "hp": 25, "strength": 8, "dexterity": 14, "constitution": 14, "intelligence": 18, "wisdom": 16, "charisma": 12}
+}
+
+const MAGE_SPELLS := {
+	"starfall": {"name": "星陨术", "description": "必中：对一个敌人造成 28 点伤害。", "targeted": true, "kind": "damage", "amount": 28},
+	"void_barrier": {"name": "虚空壁垒", "description": "获得 20 点护盾。", "targeted": false, "kind": "shield", "amount": 20},
+	"absolute_field": {"name": "绝对领域", "description": "本场战斗 AC 永久 +4。", "targeted": false, "kind": "ac", "amount": 4},
+	"arcane_siphon": {"name": "奥术虹吸", "description": "必中：对一个敌人造成 14 点伤害，并获得 10 点护盾。", "targeted": true, "kind": "damage_shield", "amount": 14, "shield": 10},
+	"echo_revival": {"name": "回响复苏", "description": "恢复 8 点生命，并获得 10 点护盾。", "targeted": false, "kind": "heal_shield", "amount": 8, "shield": 10},
+	"disorder_curse": {"name": "失序诅咒", "description": "获得 8 点护盾；所有敌人本场攻击判定 -3，AC -2。", "targeted": false, "kind": "curse", "amount": 8}
+}
+
+const POTIONS := {
+	"healing": {"name": "微光疗愈药剂", "description": "恢复 5 点生命。", "kind": "heal", "amount": 5},
+	"might": {"name": "猩红力量药剂", "description": "本场攻击伤害 +1。", "kind": "damage_bonus", "amount": 1},
+	"precision": {"name": "银辉精准药剂", "description": "本场攻击判定 +2。", "kind": "roll_bonus", "amount": 2},
+	"weakening": {"name": "灰雾削弱药剂", "description": "敌人本场攻击判定 -2。", "kind": "enemy_roll_penalty", "amount": 2},
+	"barrier": {"name": "琥珀护盾药剂", "description": "获得 8 点护盾。", "kind": "shield", "amount": 8},
+	"fire": {"name": "爆燃投掷药剂", "description": "对一个敌人造成 6 点伤害。", "kind": "damage", "amount": 6, "targeted": true}
+}
+
 static func make_monster(id: String) -> Dictionary:
 	var monster: Dictionary = MONSTERS[id].duplicate(true)
 	monster["id"] = id
 	monster["max_hp"] = monster["hp"]
 	monster["current_hp"] = monster["hp"]
 	monster["next_attack_penalty"] = 0
+	monster["combat_attack_penalty"] = 0
 	return monster
 
 static func make_relic(id: String) -> Dictionary:
 	var relic: Dictionary = RELICS[id].duplicate(true)
 	relic["id"] = id
 	return relic
+
+static func character(id: String) -> Dictionary:
+	return CHARACTERS[id].duplicate(true)
+
+static func mage_spell(id: String) -> Dictionary:
+	var spell: Dictionary = MAGE_SPELLS[id].duplicate(true)
+	spell["id"] = id
+	return spell
+
+static func make_potion(id: String) -> Dictionary:
+	var potion: Dictionary = POTIONS[id].duplicate(true)
+	potion["id"] = id
+	return potion

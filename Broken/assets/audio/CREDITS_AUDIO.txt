@@ -1,0 +1,31 @@
+HELL BGM — FOUR LAYERS
+Edited for game use: excerpted, looped with a short crossfade, and loudness-normalized.
+
+01_Limbo_Isle_of_the_Dead
+Work: Sergei Rachmaninoff — Isle of the Dead, Op. 29
+Digital realization: Alexander Wallner / AW-Scores
+Source: IMSLP file #1047320, “Synthesized Performance”
+License: CC0 1.0
+
+02_Eroded_World_Le_Gibet
+Work: Maurice Ravel — Le Gibet, from Gaspard de la nuit
+Digital piano realization: Bernd Krueger
+Source: Wikimedia Commons, “Maurice Ravel Le Gibet.ogg”
+License: CC BY-SA 2.0 DE
+License URL: https://creativecommons.org/licenses/by-sa/2.0/de/deed.en
+
+03_Fallen_Heaven_BWV582
+Work: J. S. Bach — Passacaglia and Fugue in C minor, BWV 582
+Performance: Awadagin Pratt at the White House Evening of Classical Music, 2009
+Source: Wikimedia Commons, “20091104 Awadagin Pratt - Bach's Passacaglia and Fugue in C minor, BWV 582.ogg”
+Rights status shown by source: U.S. federal government work / public domain; also carries CC BY 3.0 attribution information.
+Source note: the 11:22–11:27 “Hail to the Chief” quotation is excluded.
+
+04_End_Mahler9_Adagio
+Work: Gustav Mahler — Symphony No. 9, IV. Adagio
+Digital realization: Reinhold Behringer / Virtual Philharmonic Orchestra
+Source: Wikimedia Commons, “Mahler Symphony 9, 4th movement. Adagio.ogg”
+License: CC BY-SA 3.0
+License URL: https://creativecommons.org/licenses/by-sa/3.0/
+
+For releases that include adapted tracks 02 or 04, retain attribution, link to the applicable license, state the edits above, and comply with the applicable ShareAlike terms.

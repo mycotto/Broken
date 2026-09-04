@@ -15,7 +15,7 @@ func _run() -> void:
 	await process_frame
 	var portraits: Array = []
 	_collect_portrait_buttons(screen, portraits)
-	assert(portraits.size() == 2)
+	assert(portraits.size() == 3)
 	portraits[0].emit_signal("pressed")
 	await process_frame
 	assert(game_state.player.class_id == "warrior")

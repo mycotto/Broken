@@ -252,6 +252,13 @@ func _refresh_status() -> void:
 	status_box.add_child(_status_chip("icon-ac-v2.png", "%d" % game.player.ac))
 	if game.current_floor >= 2: status_box.add_child(_status_chip("icon-memory-v2.png", "%d / %d" % [game.player.memory, game.player.max_memory]))
 	if game.is_mage(): status_box.add_child(_status_chip("icon-mage-spell-charge.png", "%d / 5" % game.player.charge))
+	if game.is_spellsword() and not game.magic_armor.is_empty():
+		var armor_status := Label.new()
+		armor_status.text = "🪄 %s · %d回合" % [game.magic_armor.name, game.magic_armor_turns]
+		armor_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		armor_status.add_theme_font_size_override("font_size", 18)
+		armor_status.add_theme_color_override("font_color", Color("cfb7ed"))
+		status_box.add_child(armor_status)
 	status_box.add_child(_status_chip("potion-bottle.png", "%d/%d" % [game.player.items.size(), BrokenGameState.MAX_POTION_SLOTS]))
 	var distance := Label.new()
 	distance.text = "距离 %d 步" % game.distance_to_boss
@@ -268,7 +275,9 @@ func _action_icon(action: Dictionary) -> Texture2D:
 		"arcane_bolt":"icon-arcane-missile.png", "arcane_torrent":"icon-arcane-torrent.png", "spell_slot":"icon-spell-slots.png",
 		"tough":"icon-warrior-endure.png", "dodge":"icon-warrior-dodge.png", "parry":"icon-warrior-parry.png",
 		"arcane_barrier":"icon-mage-spell-charge.png", "energy_counter":"icon-spell-slots.png",
-		"items":"potion-bottle.png", "use_item":"potion-bottle.png", "drop_inventory_item":"potion-bottle.png"
+		"items":"potion-bottle.png", "use_item":"potion-bottle.png", "drop_inventory_item":"potion-bottle.png",
+		"spellsword_attack":"icon-warrior-power-attack.png", "magic_guard":"icon-shield-v2.png", "magic_armor_ritual":"icon-mage-spell-charge.png",
+		"magic_dodge":"icon-warrior-dodge.png", "magic_parry":"icon-warrior-parry.png"
 	}
 	if icons.has(id): return _texture(icons[id])
 	return null
@@ -304,11 +313,12 @@ func _build_character_cards(actions: Array) -> void:
 		content.add_theme_constant_override("separation", 10)
 		card.add_child(content)
 		var portrait := TextureButton.new()
-		portrait.texture_normal = _texture("veteran-warrior-portrait.png" if class_id == "warrior" else "female-arcane-mage-refined.png")
+		if class_id == "warrior": portrait.texture_normal = _texture("veteran-warrior-portrait.png")
+		elif class_id == "mage": portrait.texture_normal = _texture("female-arcane-mage-refined.png")
 		portrait.ignore_texture_size = true
 		portrait.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
 		portrait.custom_minimum_size = Vector2(0, 320)
-		portrait.tooltip_text = "点击选择%s" % ("战士" if class_id == "warrior" else "法师")
+		portrait.tooltip_text = "点击选择%s" % ("战士" if class_id == "warrior" else "法师" if class_id == "mage" else "魔剑士")
 		portrait.pressed.connect(_pressed.bind(action))
 		content.add_child(portrait)
 		var label := Label.new()
@@ -334,6 +344,7 @@ func _set_action_title() -> void:
 	elif game.phase == "THIRD_FLOOR_EVENT": action_title.text = "圣阶抉择"
 	elif game.phase == "SPELL_SELECT": action_title.text = "选择高阶法术"
 	elif game.phase == "SPELL_TARGET": action_title.text = "选择施法目标"
+	elif game.phase == "MAGIC_ARMOR_SELECT": action_title.text = "选择魔装"
 	elif game.phase == "ITEM_SELECT": action_title.text = "道具栏"
 	elif game.phase == "ITEM_TARGET": action_title.text = "选择药水目标"
 	elif game.phase == "POTION_PICKUP": action_title.text = "发现药水"

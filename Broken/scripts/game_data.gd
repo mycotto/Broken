@@ -62,7 +62,15 @@ const RELICS := {
 
 const CHARACTERS := {
 	"warrior": {"name": "轮回者", "class_name": "战士", "title": "破碎守卫", "description": "高生命、高 AC 的近战角色。用强力攻击、护盾猛击和守卫姿态稳步推进。", "ac": 16, "hp": 28, "strength": 18, "dexterity": 16, "constitution": 16, "intelligence": 10, "wisdom": 12, "charisma": 13},
-	"mage": {"name": "轮回者", "class_name": "法师", "title": "失落的星术师", "description": "中等生命、较低 AC 的控能角色。积累充能后施放高阶法术。", "ac": 13, "hp": 25, "strength": 8, "dexterity": 14, "constitution": 14, "intelligence": 18, "wisdom": 16, "charisma": 12}
+	"mage": {"name": "轮回者", "class_name": "法师", "title": "失落的星术师", "description": "中等生命、较低 AC 的控能角色。积累充能后施放高阶法术。", "ac": 13, "hp": 25, "strength": 8, "dexterity": 14, "constitution": 14, "intelligence": 18, "wisdom": 16, "charisma": 12},
+	"spellsword": {"name": "轮回者", "class_name": "魔剑士", "title": "契印持剑者", "description": "以生命驾驭短暂魔装的近战角色。魔装会强化进攻与防守，但血祭换装需要付出代价。", "ac": 14, "hp": 26, "strength": 16, "dexterity": 14, "constitution": 15, "intelligence": 14, "wisdom": 12, "charisma": 12}
+}
+
+const MAGIC_ARMORS := {
+	"bulwark": {"name": "壁垒魔装", "description": "获得 3 点护盾，AC +1。", "shield": 3, "ac": 1, "roll": 0, "damage": 0},
+	"hunter": {"name": "猎痕魔装", "description": "攻击判定 +1，攻击伤害 +1。", "shield": 0, "ac": 0, "roll": 1, "damage": 1},
+	"duelist": {"name": "决斗魔装", "description": "AC +1，攻击判定 +1。", "shield": 0, "ac": 1, "roll": 1, "damage": 0},
+	"ravager": {"name": "噬火魔装", "description": "获得 2 点护盾，攻击伤害 +1。", "shield": 2, "ac": 0, "roll": 0, "damage": 1}
 }
 
 const MAGE_SPELLS := {
@@ -101,6 +109,11 @@ static func make_relic(id: String) -> Dictionary:
 
 static func character(id: String) -> Dictionary:
 	return CHARACTERS[id].duplicate(true)
+
+static func make_magic_armor(id: String) -> Dictionary:
+	var armor: Dictionary = MAGIC_ARMORS[id].duplicate(true)
+	armor["id"] = id
+	return armor
 
 static func mage_spell(id: String) -> Dictionary:
 	var spell: Dictionary = MAGE_SPELLS[id].duplicate(true)

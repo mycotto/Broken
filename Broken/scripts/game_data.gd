@@ -68,9 +68,9 @@ const CHARACTERS := {
 
 const MAGIC_ARMORS := {
 	"bulwark": {"name": "壁垒魔装", "description": "获得 3 点护盾，AC +1。", "shield": 3, "ac": 1, "roll": 0, "damage": 0},
-	"hunter": {"name": "猎痕魔装", "description": "攻击判定 +1，攻击伤害 +1。", "shield": 0, "ac": 0, "roll": 1, "damage": 1},
+	"hunter": {"name": "猎痕魔装", "description": "攻击判定 +1，攻击伤害随机 +2-4。", "shield": 0, "ac": 0, "roll": 1, "damage": 0, "damage_min": 2, "damage_max": 4},
 	"duelist": {"name": "决斗魔装", "description": "AC +1，攻击判定 +1。", "shield": 0, "ac": 1, "roll": 1, "damage": 0},
-	"ravager": {"name": "噬火魔装", "description": "获得 2 点护盾，攻击伤害 +1。", "shield": 2, "ac": 0, "roll": 0, "damage": 1}
+	"ravager": {"name": "噬火魔装", "description": "获得 2 点护盾，攻击伤害随机 +2-4。", "shield": 2, "ac": 0, "roll": 0, "damage": 0, "damage_min": 2, "damage_max": 4}
 }
 
 const MAGE_SPELLS := {

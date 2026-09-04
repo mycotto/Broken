@@ -252,9 +252,11 @@ func _refresh_status() -> void:
 	status_box.add_child(_status_chip("icon-ac-v2.png", "%d" % game.player.ac))
 	if game.current_floor >= 2: status_box.add_child(_status_chip("icon-memory-v2.png", "%d / %d" % [game.player.memory, game.player.max_memory]))
 	if game.is_mage(): status_box.add_child(_status_chip("icon-mage-spell-charge.png", "%d / 5" % game.player.charge))
-	if game.is_spellsword() and not game.magic_armor.is_empty():
+	if game.is_spellsword() and not game.magic_armors.is_empty():
+		var armor_entries := []
+		for armor in game.magic_armors: armor_entries.append("%s·%d" % [armor.name, armor.turns])
 		var armor_status := Label.new()
-		armor_status.text = "🪄 %s · %d回合" % [game.magic_armor.name, game.magic_armor_turns]
+		armor_status.text = "🪄 %s" % " / ".join(armor_entries)
 		armor_status.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		armor_status.add_theme_font_size_override("font_size", 18)
 		armor_status.add_theme_color_override("font_color", Color("cfb7ed"))

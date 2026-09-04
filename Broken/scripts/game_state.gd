@@ -26,8 +26,7 @@ var mage_spells: Array = []
 var pending_spell := {}
 var pending_item := {}
 var inventory_opened_from_combat := false
-var magic_armor := {}
-var magic_armor_turns := 0
+var magic_armors: Array = []
 var magic_armor_ac_bonus := 0
 var magic_armor_roll_bonus := 0
 var magic_armor_damage_bonus := 0
@@ -94,7 +93,7 @@ func get_status_text() -> String:
 	var text := "❤️ HP: %d/%d | 🛡️ 护盾: %d | AC: %d" % [player.current_hp, player.max_hp, player.temp_hp, player.ac]
 	if current_floor >= 2: text += " | 🧠 记忆: %d/%d" % [player.memory, player.max_memory]
 	if is_mage(): text += " | ✨ 充能: %d/5" % player.charge
-	if is_spellsword() and not magic_armor.is_empty(): text += " | 🪄 %s: %d回合" % [magic_armor.name, magic_armor_turns]
+	if is_spellsword() and not magic_armors.is_empty(): text += " | 🪄 魔装: %d件" % magic_armors.size()
 	text += " | 🗺️ 距离: %d步" % distance_to_boss
 	if phase.begins_with("COMBAT") or phase == "TARGETING" or phase.begins_with("SPELL_"): text += " | 回合: %d" % combat_round
 	if player.rule_break_penalty > 0: text += " | ⚠️ 规则崩溃: -%d" % player.rule_break_penalty
@@ -292,7 +291,7 @@ func start_floor_boss(logs: Array) -> Dictionary:
 	return start_combat(["ZhongMoBenShen"], true, logs)
 
 func start_combat(ids: Array, _is_elite := false, initial_logs: Array = []) -> Dictionary:
-	remove_magic_armor()
+	remove_magic_armors()
 	phase = "COMBAT_PLAYER"; enemies = []
 	for id in ids: enemies.append(BrokenGameData.make_monster(id))
 	shield_bash_cooldown = 0; defend_cooldown = 0; magic_dodge_cooldown = 0; defending = false; combat_ac_bonus = 0; combat_damage_bonus = 0; combat_attack_roll_bonus = 0; combat_enemy_attack_penalty = 0; combat_enemy_attack_penalty_sources = []; mage_spells = []; pending_spell = {}; pending_item = {}; combat_round = 1; player.disabled_action = ""; player.last_attack_missed = false
@@ -502,28 +501,28 @@ func equip_magic_armor(armor_id: String) -> Dictionary:
 	return schedule_enemy(logs)
 
 func apply_magic_armor(armor_id: String, logs: Array) -> void:
-	logs.append_array(remove_magic_armor())
-	magic_armor = BrokenGameData.make_magic_armor(armor_id)
-	magic_armor_turns = 3
-	magic_armor_ac_bonus = magic_armor.ac
-	magic_armor_roll_bonus = magic_armor.roll
-	magic_armor_damage_bonus = magic_armor.damage
-	player.ac += magic_armor_ac_bonus
-	var shield: int = magic_armor.shield + player.bonus_shield
+	var armor := BrokenGameData.make_magic_armor(armor_id)
+	armor["turns"] = 3
+	magic_armors.append(armor)
+	magic_armor_ac_bonus += armor.ac
+	magic_armor_roll_bonus += armor.roll
+	magic_armor_damage_bonus += armor.damage
+	player.ac += armor.ac
+	var shield: int = armor.shield + player.bonus_shield
 	if shield > 0: player.temp_hp += shield
 	var effects := []
 	if shield > 0: effects.append("护盾 +%d" % shield)
-	if magic_armor_ac_bonus > 0: effects.append("AC +%d" % magic_armor_ac_bonus)
-	if magic_armor_roll_bonus > 0: effects.append("攻击判定 +%d" % magic_armor_roll_bonus)
-	if magic_armor_damage_bonus > 0: effects.append("攻击伤害 +%d" % magic_armor_damage_bonus)
-	logs.append("🪄 装备【%s】（持续 3 回合）：%s。" % [magic_armor.name, "，".join(effects)])
+	if armor.ac > 0: effects.append("AC +%d" % armor.ac)
+	if armor.roll > 0: effects.append("攻击判定 +%d" % armor.roll)
+	if armor.damage > 0: effects.append("攻击伤害 +%d" % armor.damage)
+	logs.append("🪄 装备【%s】（独立持续 3 回合）：%s。" % [armor.name, "，".join(effects)])
 
-func remove_magic_armor() -> Array:
+func remove_magic_armors() -> Array:
 	var logs := []
-	if not magic_armor.is_empty():
-		if magic_armor_ac_bonus > 0: player.ac -= magic_armor_ac_bonus
-		logs.append("🪄【%s】的魔力消散。" % magic_armor.name)
-	magic_armor = {}; magic_armor_turns = 0; magic_armor_ac_bonus = 0; magic_armor_roll_bonus = 0; magic_armor_damage_bonus = 0
+	for armor in magic_armors:
+		if armor.ac > 0: player.ac -= armor.ac
+		logs.append("🪄【%s】的魔力消散。" % armor.name)
+	magic_armors = []; magic_armor_ac_bonus = 0; magic_armor_roll_bonus = 0; magic_armor_damage_bonus = 0
 	return logs
 func attack_target(index: int, dice: String, bash: bool, attack_text := "", damage_bonus := 5, roll_base := 7) -> Dictionary:
 	var targets := alive_enemies()
@@ -607,7 +606,7 @@ func enemy_turn() -> Dictionary:
 		return _result(logs + ["请选择应对方式："], [_action("奥术屏障（消耗 1 充能，本次 AC+3，获得 6 护盾）", "arcane_barrier", {}, "combat", player.charge < 1), _action("硬抗 (AC判定)", "tough", {}, "combat"), _action("能量对冲（智慧判定；失败受伤+35%，获得 1 充能）", "energy_counter", {}, "combat")])
 	if is_spellsword():
 		var dodge_label := "魔装疾闪（敏捷判定 +5；CD %d）" % magic_dodge_cooldown
-		var armor_strength_bonus := 1 if not magic_armor.is_empty() else 0
+		var armor_strength_bonus := magic_armors.size()
 		return _result(logs + ["请选择应对方式："], [_action("硬抗 (AC判定)", "tough", {}, "combat"), _action(dodge_label, "magic_dodge", {}, "combat", magic_dodge_cooldown > 0), _action("魔装招架（力量判定；魔装 +%d）" % armor_strength_bonus, "magic_parry", {}, "combat")])
 	return _result(logs + ["请选择应对方式："], [_action("硬抗 (AC判定)", "tough", {}, "combat"), _action("闪避 (敏捷豁免)", "dodge", {}, "combat"), _action("招架 (力量检定)", "parry", {}, "combat")])
 
@@ -649,7 +648,7 @@ func resolve_parry() -> Dictionary:
 	else: logs.append("招架失败！")
 	return apply_and_continue(actual, logs)
 func resolve_magic_parry() -> Dictionary:
-	var armor_bonus := 1 if not magic_armor.is_empty() else 0
+	var armor_bonus := magic_armors.size()
 	var strength: int = ability_mod(player.strength) + armor_bonus
 	var check: int = roll_d20() + strength - player.rule_break_penalty
 	var actual: int = pending_defense.damage
@@ -677,10 +676,17 @@ func end_enemy_turn() -> Dictionary:
 	if defend_cooldown > 0: defend_cooldown -= 1
 	if magic_dodge_cooldown > 0: magic_dodge_cooldown -= 1
 	combat_round += 1; var logs := []
-	if is_spellsword() and not magic_armor.is_empty():
-		magic_armor_turns -= 1
-		if magic_armor_turns <= 0: logs.append_array(remove_magic_armor())
-		else: logs.append("🪄【%s】还会持续 %d 回合。" % [magic_armor.name, magic_armor_turns])
+	if is_spellsword() and not magic_armors.is_empty():
+		for index in range(magic_armors.size() - 1, -1, -1):
+			var armor: Dictionary = magic_armors[index]
+			armor.turns -= 1
+			if armor.turns <= 0:
+				if armor.ac > 0: player.ac -= armor.ac
+				magic_armor_ac_bonus -= armor.ac; magic_armor_roll_bonus -= armor.roll; magic_armor_damage_bonus -= armor.damage
+				magic_armors.remove_at(index)
+				logs.append("🪄【%s】的魔力消散。" % armor.name)
+		for armor in magic_armors:
+			logs.append("🪄【%s】还会持续 %d 回合。" % [armor.name, armor.turns])
 	if combat_round >= 4:
 		for enemy in enemies:
 			if enemy.id == "BengJieChiTianShi" and enemy.ac == 17: enemy.ac = 15; logs.append("💔 崩解炽天使的护甲等级降至15！")
@@ -803,7 +809,7 @@ func victory(initial_logs: Array) -> Dictionary:
 	var logs := initial_logs.duplicate(); logs.append("\n=============== 战斗胜利 ===============")
 	if combat_ac_bonus > 0:
 		player.ac -= combat_ac_bonus; logs.append("🌀 战斗结束，绝对领域消散，AC 恢复至 %d。" % player.ac); combat_ac_bonus = 0
-	logs.append_array(remove_magic_armor())
+	logs.append_array(remove_magic_armors())
 	if player.temp_hp > 0: player.temp_hp = 0; logs.append("战斗结束，护盾消散。")
 	logs.append_array(relic_event("combat_end", {}).logs)
 	if not alive(player): return game_over(logs)

@@ -26,6 +26,26 @@ func _init() -> void:
 	assert(game.current_floor == 1)
 	var combat := game.start_combat(["LostSoul"], false)
 	assert(combat.actions.size() == 5)
+	var defense_game := BrokenGameState.new()
+	defense_game.start_new_game("warrior")
+	defense_game.start_combat(["LostSoul"], false)
+	defense_game.pending_defense = {"roll":0, "damage":4}
+	defense_game.phase = "COMBAT_DEFEND"
+	var defense_success := defense_game.resolve_tough()
+	assert(defense_success.defense_feedback.success)
+	assert(defense_success.defense_feedback.damage == 0)
+	assert(defense_success.defense_feedback.check_text == "AC 16 对 攻击判定 0")
+	assert(defense_success.defense_feedback.shield_absorbed == 0)
+	assert(defense_success.defense_feedback.hp_loss == 0)
+	assert(is_equal_approx(defense_success.timer, BrokenGameState.DEFENSE_RESULT_DELAY))
+	defense_game.pending_defense = {"roll":99, "damage":4}
+	defense_game.phase = "COMBAT_DEFEND"
+	var defense_failure := defense_game.resolve_tough()
+	assert(not defense_failure.defense_feedback.success)
+	assert(defense_failure.defense_feedback.check_text == "AC 16 对 攻击判定 99")
+	assert(defense_failure.defense_feedback.shield_absorbed == 0)
+	assert(defense_failure.defense_feedback.hp_loss == 4)
+	assert(is_equal_approx(defense_failure.timer, BrokenGameState.DEFENSE_RESULT_DELAY))
 	var targets := game.select_target("attack")
 	assert(targets.actions.size() == 2)
 	var guarded := game.defend()
@@ -101,6 +121,7 @@ func _init() -> void:
 	var shadow_combat := shadowdancer.start_combat(["LostSoul"], false)
 	assert(shadow_combat.actions.size() == 5)
 	assert(shadow_combat.actions[2].disabled)
+	assert("各 1d3" in shadow_combat.actions[0].label)
 	shadowdancer.player.shadow_marks = 2
 	assert(not shadowdancer.shadow_execute(0).is_empty())
 	shadowdancer.start_combat(["LostSoul"], false)
@@ -112,9 +133,24 @@ func _init() -> void:
 	shadowdancer.phase = "COMBAT_DEFEND"
 	shadowdancer.resolve_shadow_substitute()
 	assert(shadowdancer.shadow_substitute_cooldown == 3)
+	shadowdancer.pending_defense = {"roll":0, "damage":1}
+	shadowdancer.phase = "COMBAT_DEFEND"
+	shadowdancer.shadow_smoke()
+	assert(shadowdancer.combat_enemy_attack_penalty == 0)
 	shadowdancer.enemies[0].poison_turns = 1
 	shadowdancer.end_enemy_turn()
 	assert(shadowdancer.enemies[0].current_hp == 3)
+	var legendary_shadow := BrokenGameState.new()
+	legendary_shadow.start_new_game("shadowdancer")
+	legendary_shadow.level_up("legendary_shadow")
+	assert(legendary_shadow.player.shadow_legendary_crown)
+	legendary_shadow.start_combat(["LostSoul"], false)
+	legendary_shadow.pending_defense = {"roll":0, "damage":0}
+	legendary_shadow.phase = "COMBAT_DEFEND"
+	var legendary_dodge := legendary_shadow.resolve_shadow_dodge()
+	assert(legendary_dodge.actions.size() == 5)
+	assert(not legendary_shadow.shadow_legendary_dodge_attack_available)
+	assert(legendary_dodge.logs.any(func(line): return "追加攻击回合" in line))
 	var forsaken_mage := BrokenGameState.new()
 	forsaken_mage.start_new_game("mage")
 	forsaken_mage.level_up("forsake_boss_reward")
@@ -122,6 +158,7 @@ func _init() -> void:
 	forsaken_mage.level_up("legendary_mage")
 	forsaken_mage.start_combat(["LostSoul"], false)
 	assert(forsaken_mage.mage_defense_retry_available)
+	assert("不是额外智力判定" in forsaken_mage.character_text())
 	var spellsword := BrokenGameState.new()
 	spellsword.start_new_game("spellsword")
 	assert(spellsword.player.class_id == "spellsword")
@@ -148,6 +185,19 @@ func _init() -> void:
 	spellsword.phase = "COMBAT_DEFEND"
 	spellsword.resolve_magic_dodge()
 	assert(spellsword.magic_dodge_cooldown == 2)
+	var shield_spellsword := BrokenGameState.new()
+	shield_spellsword.start_new_game("spellsword")
+	shield_spellsword.start_combat(["LostSoul"], false)
+	shield_spellsword.remove_magic_armors()
+	shield_spellsword.apply_magic_armor("bulwark", [])
+	shield_spellsword.player.temp_hp = 0
+	shield_spellsword.end_enemy_turn()
+	assert(shield_spellsword.player.temp_hp == 3)
+	assert(shield_spellsword.magic_armors[0].turns == 2)
+	shield_spellsword.pending_defense = {"roll":1, "damage":1}
+	shield_spellsword.phase = "COMBAT_DEFEND"
+	var parry_result := shield_spellsword.resolve_magic_parry()
+	assert(parry_result.logs.any(func(line): return "强化 +6" in line))
 	var legendary_spellsword := BrokenGameState.new()
 	legendary_spellsword.start_new_game("spellsword")
 	legendary_spellsword.level_up("forsake_boss_reward")
